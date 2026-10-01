@@ -1,0 +1,20 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# runtime data (dev)
+output/
+config.json
+
+# dev scratch / debug artifacts
+_scratch/
+
+# logs
+*.log
+npm-debug.log*
+
+# OS
+Thumbs.db
+.DS_Store

@@ -1,0 +1,72 @@
+{
+  "name": "dtgc-lyrics-wall",
+  "version": "1.0.0",
+  "description": "全屏动态歌词可视化墙 —— 碎片漂浮歌词，适合投影到墙面做氛围",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --win --dir",
+    "dist": "electron-builder --win",
+    "dist:portable": "electron-builder --win portable",
+    "selftest": "node tools/selftest.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.dtgc.lyricswall",
+    "productName": "LyricsWall",
+    "icon": "build/icon.png",
+    "files": [
+      "main.js",
+      "preload.js",
+      "krc.js",
+      "kugou-cdp.js",
+      "lyrics-service.js",
+      "src/**",
+      "web/**",
+      "players/**",
+      "server/**",
+      "tools/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "tools/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "LyricsWall-Portable-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "LyricsWall-Setup-${version}.exe"
+    }
+  },
+  "dependencies": {
+    "gsap": "^3.12.5",
+    "pixi.js": "^8.21.0",
+    "three": "^0.147.0",
+    "ws": "^8.21.3"
+  }
+}

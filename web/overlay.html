@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LyricsWall Overlay</title>
+<!-- OBS 浏览器源透明叠加页：背景全透明，渲染 iOS 黑白卡片 + 当前歌词行。
+     在 OBS 中添加"浏览器"源，URL 填 http://127.0.0.1:8787/overlay，建议 900x360。
+     元素显隐跟随桌面控制台的开关（config）。 -->
+<style>
+  html,body{margin:0;padding:0;background:transparent;overflow:hidden;
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;color:#fff;
+    width:100vw;height:100vh;}
+  /* 强调色默认值：封面加载后由 extractAccent 按封面主色覆盖（波形等跟随） */
+  :root{--accent:#7fd4ff;--accent-2:#c9a6ff;}
+  #stage{position:absolute;left:0;right:0;bottom:0;padding:20px 26px;
+    display:flex;flex-direction:column;align-items:center;gap:14px;
+    font-family:var(--np-font,"Segoe UI","Microsoft YaHei",system-ui,sans-serif);}
+  /* 歌综视图：字幕改用 #stage 内叠放元素，#line 让位 */
+  body.view-show #line{display:none;}
+  /* 当前歌词行（AMLL 风） */
+  #line{font-size:calc(30px * var(--lc-size,1));font-weight:var(--lc-weight,800);text-align:center;max-width:92vw;
+    color:var(--lc-color,#fff);letter-spacing:var(--lc-spacing,0px);
+    text-shadow:0 2px 10px rgba(0,0,0,.75);line-height:1.3;}
+  body.lc-shadow #line{text-shadow:0 0 24px color-mix(in srgb, var(--lc-color,#fff) 45%, transparent),0 2px 10px rgba(0,0,0,.75);}
+  body.lc-italic #line,body.lc-italic #title,body.lc-italic #artist{font-style:italic;}
+  #line:empty{display:none;}
+  /* PV 字效视图：隐藏 iOS 卡，只输出逐字歌词（透明阿尔法） */
+  body.view-pv #card{display:none;}
+  /* PixiJS PV 画布：全屏固定层，仅 PV 视图显示；引擎就绪后隐藏 CSS 兜底行 */
+  #pvCanvas{position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:0;}
+  body.view-pv #pvCanvas{display:block;}
+  body.view-pv.pv-engine-on #line{display:none;}
+  /* 3D 长方体歌词块画布：全屏固定层，仅 box 视图显示；overlay 保持透明背景（OBS 叠加） */
+  #boxCanvas{position:fixed;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:0;}
+  body.view-box #boxCanvas{display:block;}
+  body.view-box #card{display:none;}
+  body.view-box #stage{display:none;}
+  /* 背景层：bg_mode 驱动（overlay 默认全透，设了背景才显示） */
+  #bg{position:fixed;inset:0;z-index:-1;display:none;pointer-events:none;}
+  body.bg-black #bg{display:block;background:#000;}
+  body.bg-g1 #bg{display:block;background:radial-gradient(1200px 800px at 70% 18%,#2b3a7a 0%,transparent 60%),radial-gradient(900px 700px at 20% 90%,#16224e 0%,transparent 55%),linear-gradient(160deg,#070b1c 0%,#101a3d 58%,#05070f 100%);}
+  body.bg-g2 #bg{display:block;background:radial-gradient(1000px 700px at 28% 12%,#5b2a86 0%,transparent 55%),radial-gradient(900px 650px at 78% 82%,#24407e 0%,transparent 60%),linear-gradient(180deg,#0a0716 0%,#170c2e 62%,#0b0714 100%);}
+  body.bg-g3 #bg{display:block;background:radial-gradient(1100px 700px at 50% 112%,#b3542a 0%,transparent 60%),radial-gradient(700px 500px at 85% 10%,#4a2148 0%,transparent 55%),linear-gradient(180deg,#120a10 0%,#33160f 68%,#4a2114 100%);}
+  body.bg-g4 #bg{display:block;background:radial-gradient(1000px 800px at 62% -5%,#14524a 0%,transparent 55%),radial-gradient(800px 600px at 10% 95%,#0d3a3f 0%,transparent 55%),linear-gradient(200deg,#04100e 0%,#0a2a26 58%,#030807 100%);}
+  body.bg-custom #bg{display:block;background-position:center;background-size:cover;background-repeat:no-repeat;}
+  /* Alpha 透明通道：只剩字幕，背景与卡片全隐 */
+  body.bg-transparent #bg,body.bg-transparent #card{display:none!important;}
+  /* 歌综字幕视图：底部描边大字，只显示当前句；新旧句叠放过场（新句立即入场） */
+  body.view-show #card{display:none;}
+  .sh-line{
+    position:absolute;left:26px;right:26px;bottom:20px;text-align:center;
+    font-size:calc(46px * var(--sh-size,1));font-weight:900;letter-spacing:.02em;line-height:1.3;
+    color:var(--sh-color,#fff);
+    -webkit-text-stroke:var(--sh-outline-w,4px) var(--sh-outline,#000);paint-order:stroke fill;
+    text-shadow:0 8px 22px rgba(0,0,0,.8);
+  }
+  body.sh-no-outline .sh-line{-webkit-text-stroke-width:0;text-shadow:0 4px 18px rgba(0,0,0,.85);}
+  .in-fly{animation:sh-in-fly calc(.5s / var(--sh-speed,1)) cubic-bezier(.2,1.3,.4,1) both;}
+  .out-fly{animation:sh-out-fly calc(.42s / var(--sh-speed,1)) ease-in both;}
+  .in-fade{animation:sh-in-fade calc(.5s / var(--sh-speed,1)) ease both;}
+  .out-fade{animation:sh-out-fade calc(.42s / var(--sh-speed,1)) ease both;}
+  .in-pop{animation:sh-in-pop calc(.52s / var(--sh-speed,1)) cubic-bezier(.2,1.5,.45,1) both;}
+  .out-pop{animation:sh-out-pop calc(.4s / var(--sh-speed,1)) ease-in both;}
+  .in-slide{animation:sh-in-slide calc(.5s / var(--sh-speed,1)) cubic-bezier(.2,1.2,.4,1) both;}
+  .out-slide{animation:sh-out-slide calc(.42s / var(--sh-speed,1)) ease-in both;}
+  @keyframes sh-in-fly{from{opacity:0;transform:translateY(46px);}to{opacity:1;transform:none;}}
+  @keyframes sh-out-fly{from{opacity:1;transform:none;}to{opacity:0;transform:translateY(-40px);}}
+  @keyframes sh-in-fade{from{opacity:0;transform:scale(.97);}to{opacity:1;transform:none;}}
+  @keyframes sh-out-fade{from{opacity:1;}to{opacity:0;}}
+  @keyframes sh-in-pop{0%{opacity:0;transform:scale(.6);}70%{opacity:1;transform:scale(1.06);}100%{transform:scale(1);}}
+  @keyframes sh-out-pop{from{opacity:1;transform:scale(1);}to{opacity:0;transform:scale(.7);}}
+  @keyframes sh-in-slide{from{opacity:0;transform:translateX(76px);}to{opacity:1;transform:none;}}
+  @keyframes sh-out-slide{from{opacity:1;transform:none;}to{opacity:0;transform:translateX(-76px);}}
+  /* PV 字效：逐字撒开 + 错峰弹入；风格/字号/速度独立可控（body.pv-* + --pv-*） */
+  #line.pv{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:0 .10em;line-height:1.15;text-shadow:none;}
+  #line.pv .pv-char{
+    display:inline-block;font-weight:var(--lc-weight,800);font-size:calc(34px * var(--pv-size,1));
+    background:linear-gradient(180deg,#ffffff 0%,#dcdfe3 36%,#9aa0a8 52%,#71767e 62%,#d4d8dc 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;
+    filter:drop-shadow(0 3px 7px rgba(0,0,0,.55));opacity:0;
+    transform:translate(var(--tx,0),var(--ty,0)) scale(.1) rotate(calc(var(--rot,0deg) * 3));
+    animation:pv-pop calc(.55s / var(--pv-speed,1)) cubic-bezier(.18,1.25,.4,1) both;animation-delay:calc(var(--d,0s) / var(--pv-speed,1));
+  }
+  /* PV 字体风格改由 PixiJS 模板驱动（pv_template）；上方 #line.pv .pv-char 默认金属渐变仅作 WebGL 不可用时兜底 */
+  #line.pv .pv-space{display:inline-block;width:.5em;}
+  @keyframes pv-pop{
+    0%{opacity:0;transform:translate(var(--tx,0),var(--ty,0)) scale(.1) rotate(calc(var(--rot,0deg) * 3));}
+    60%{opacity:1;}
+    100%{opacity:1;transform:translate(var(--tx,0),var(--ty,0)) scale(var(--sc,1)) rotate(var(--rot,0deg));}
+  }
+  /* iOS 黑白卡片 */
+  #card{width:min(520px,92vw);background:#000;border-radius:24px;padding:18px 22px;
+    display:flex;flex-direction:column;gap:13px;
+    box-shadow:0 16px 44px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,255,255,.07);}
+  .np-info{display:flex;align-items:center;gap:15px;}
+  .np-cover-wrap{width:66px;height:66px;flex:none;border-radius:13px;overflow:hidden;background:#17181a;}
+  #cover{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .35s;}
+  #cover.loaded{opacity:1;}
+  .np-text{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:4px;}
+  #title{font-size:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #artist{font-size:14px;color:#88858b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* 波形：JS 按帧驱动各柱高度（合成律动），CSS 只管造型；配色跟封面主色（--accent 由 extractAccent 写入） */
+  .np-wave{display:flex;align-items:flex-end;gap:2px;height:28px;flex:none;opacity:.95;}
+  .np-wave i{width:3px;height:12%;border-radius:2px;background:linear-gradient(180deg,color-mix(in srgb,var(--accent-2) 70%,#fff) 0%,var(--accent) 58%,color-mix(in srgb,var(--accent) 62%,#000) 100%);transition:height .07s linear;}
+  .np-progress{display:flex;align-items:center;gap:10px;}
+  .np-time{font-size:12px;color:#b0b0b0;font-variant-numeric:tabular-nums;min-width:40px;}
+  .np-progress .np-time:last-child{text-align:right;}
+  .np-bar-bg{flex:1;height:5px;background:#242626;border-radius:3px;overflow:hidden;}
+  #barFill{height:100%;width:0%;background:#88858b;border-radius:3px;transition:width .3s linear;}
+  .hidden{display:none!important;}
+  /* 配置驱动元素显隐（与桌面控制台开关联动） */
+  body.hide-cover .np-cover-wrap{display:none;}
+  body.hide-title #title{display:none;}
+  body.hide-artist #artist{display:none;}
+  body.hide-progress .np-bar-bg{display:none;}
+  body.hide-times .np-time{display:none;}
+  body.hide-wave .np-wave{display:none;}
+  body.hide-lyric #line{display:none;}
+</style>
+<script src="/vendor/pixi.min.js"></script>
+<script src="/pv-engine.js"></script>
+<script src="/pv-templates.js"></script>
+<script src="/vendor/three.min.js"></script>
+<script src="/vendor/gsap.min.js"></script>
+<script src="/box-engine.js"></script>
+</head>
+<body>
+<div id="bg"></div>
+<canvas id="pvCanvas"></canvas>
+<canvas id="boxCanvas"></canvas>
+<div id="stage" class="hidden">
+  <div id="line"></div>
+  <div id="card">
+    <div class="np-info">
+      <div class="np-cover-wrap"><img id="cover" alt=""></div>
+      <div class="np-text"><div id="title"></div><div id="artist"></div></div>
+      <div class="np-wave"><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div class="np-progress">
+      <span class="np-time" id="cur">0:00</span>
+      <div class="np-bar-bg"><div id="barFill"></div></div>
+      <span class="np-time" id="rem">-0:00</span>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var state=null, lines=[], config={}, pin=null;
+  var elStage=document.getElementById('stage'),
+      elCover=document.getElementById('cover'),
+      elTitle=document.getElementById('title'),
+      elArtist=document.getElementById('artist'),
+      elLine=document.getElementById('line'),
+      elBg=document.getElementById('bg'),
+      elFill=document.getElementById('barFill'),
+      elCur=document.getElementById('cur'),
+      elRem=document.getElementById('rem');
+
+  var ELS={cover:'el_cover',title:'el_title',artist:'el_artist',progress:'el_progress',
+           times:'el_times',wave:'el_wave',lyric:'el_lyric'};
+  var FONT_PRESETS={
+    system:'"Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif',
+    yahei:'"Microsoft YaHei",sans-serif',
+    simhei:'SimHei,"Microsoft YaHei",sans-serif',
+    simsun:'SimSun,"宋体",serif',
+    kai:'KaiTi,"楷体",STKaiti,serif',
+    fangsong:'FangSong,"仿宋",STFangsong,serif',
+    lisu:'LiSu,"隶书",serif',
+    youyuan:'YouYuan,"幼圆",sans-serif',
+    serif:'Georgia,"Times New Roman",serif',
+    mono:'"Cascadia Code",Consolas,"Courier New",monospace',
+    custom:''
+  };
+  // overlay 始终跑在浏览器/OBS，本机字体需通过 @font-face 从 /api/font 远程加载
+  var wallFontUrl='';
+  function ensureWallFont(ver){
+    var url='/api/font?v='+(ver||0);
+    if(wallFontUrl===url) return;
+    wallFontUrl=url;
+    var st=document.getElementById('wallFontFace');
+    if(!st){ st=document.createElement('style'); st.id='wallFontFace'; document.head.appendChild(st); }
+    st.textContent="@font-face{font-family:'__wallfont';src:url('"+url+"');font-display:swap;}";
+  }
+  function fontFamily(){
+    var f=config.ty_family;
+    if(f==='custom') return (config.ty_custom||'').trim()||FONT_PRESETS.system;
+    if(f && Object.prototype.hasOwnProperty.call(FONT_PRESETS,f)) return FONT_PRESETS[f]||FONT_PRESETS.system;
+    if(f){ ensureWallFont(config.ty_font_v); return "'__wallfont','"+String(f).replace(/["']/g,'')+"',"+FONT_PRESETS.system; }
+    return FONT_PRESETS.system;
+  }
+  function applyConfig(){
+    Object.keys(ELS).forEach(function(k){
+      var on = config[ELS[k]]===undefined ? true : !!config[ELS[k]];
+      document.body.classList.toggle('hide-'+k, !on);
+    });
+    var rs=document.documentElement.style;
+    rs.setProperty('--np-font', fontFamily());
+    // 居中歌词（卡片视图）专属样式
+    rs.setProperty('--lc-color', config.lc_color||'#ffffff');
+    rs.setProperty('--lc-weight', String(config.lc_weight||800));
+    rs.setProperty('--lc-size', String((config.lc_size||100)/100));
+    rs.setProperty('--lc-spacing', (config.lc_spacing||0)+'px');
+    document.body.classList.toggle('lc-italic', !!config.lc_italic);
+    document.body.classList.toggle('lc-shadow', config.lc_shadow!==false);
+    // PV 字效：CSS 兜底变量（WebGL 不可用时用）+ 引擎参数在末尾下发
+    rs.setProperty('--pv-size', String((config.pv_size||100)/100));
+    rs.setProperty('--pv-speed', String((config.pv_speed||100)/100));
+    rs.setProperty('--pv-color', config.lc_color||'#ffffff');
+    // 歌综字幕专属样式
+    document.body.classList.toggle('sh-rotate', (config.sh_anim||'rotate')==='rotate');
+    document.body.classList.toggle('sh-no-outline', config.sh_outline===false);
+    rs.setProperty('--sh-speed', String((config.sh_speed||100)/100));
+    rs.setProperty('--sh-size', String((config.sh_size||100)/100));
+    rs.setProperty('--sh-color', config.sh_color||'#ffffff');
+    rs.setProperty('--sh-outline', config.sh_outline_color||'#000000');
+    rs.setProperty('--sh-outline-w', (config.sh_outline_w==null?4:config.sh_outline_w)+'px');
+    document.body.classList.toggle('view-pv', config.view==='pv');
+    document.body.classList.toggle('view-show', config.view==='show');
+    document.body.classList.toggle('view-box', config.view==='box');
+    // 背景模式 + Alpha 透明（与桌面/网页端同步）
+    var trans=!!config.ft_transparent;
+    document.body.classList.toggle('bg-transparent', trans);
+    var modes=['cover','black','g1','g2','g3','g4','custom'];
+    var mode=modes.indexOf(config.bg_mode)>=0?config.bg_mode:'cover';
+    modes.forEach(function(m){ document.body.classList.toggle('bg-'+m, !trans && m===mode); });
+    if(elBg){
+      if(!trans && mode==='custom') elBg.style.backgroundImage='url("/api/bg-custom?v='+(config.bg_custom_v||0)+'")';
+      else elBg.style.backgroundImage='';
+    }
+    pvCurText=null;
+    if(config.view!=='pv' && config.view!=='box'){ elLine.classList.remove('pv'); elLine.textContent=''; }
+    if(config.view!=='show'){ showCurTxt=null; var sl=elStage.querySelectorAll('.sh-line'); for(var i=0;i<sl.length;i++){ sl[i].remove(); } }
+    // PV 引擎生命周期：进入 PV 视图创建/恢复并下发参数；离开只暂停保留 WebGL 上下文（切回重建会因 canvas 上下文失效而失败）
+    if(config.view==='pv'){ ensurePVEngine(); applyPVParams(); if(window.PVEngine&&PVEngine.isActive()) PVEngine.setTransparent(trans); }
+    else { pausePVEngine(); }
+    // 3D 方块引擎生命周期：同上（暂停不销毁）
+    if(config.view==='box'){ ensureBoxEngine(); applyBoxParams(); if(window.BoxEngine&&BoxEngine.isActive()){ BoxEngine.setTransparent(trans); feedBoxOrPin(); } }
+    else { pauseBoxEngine(); }
+  }
+  // ---- PixiJS PV 引擎接入（WebGL 优先，失败回退 pvRender） ----
+  var pvEngineFailed=false, lastPVFontKey=null;
+  function applyPVParams(){
+    if(!window.PVEngine || !PVEngine.isActive()) return;
+    PVEngine.setParams({
+      speed:(config.pv_speed||100)/100,
+      motion:(config.pv_motion==null?100:config.pv_motion)/100,
+      bgAlpha:(config.pv_bgalpha==null?100:config.pv_bgalpha)/100,
+      bpm:config.pv_bpm||120,
+      beat:(config.pv_beat==null?50:config.pv_beat)/100,
+      size:(config.pv_size||100)/100,
+      fx:{grain:!!config.pv_fx_grain, scan:!!config.pv_fx_scan, glitch:!!config.pv_fx_glitch}
+    });
+    PVEngine.setTemplate(config.pv_template||'cyberRuins');
+    var fk=fontFamily();
+    if(fk!==lastPVFontKey){ lastPVFontKey=fk; PVEngine.setFont(fontFamily); }
+  }
+  function ensurePVEngine(){
+    if(!window.PVEngine || pvEngineFailed) return;
+    if(PVEngine.isActive()){ document.body.classList.add('pv-engine-on'); PVEngine.setPaused(false); applyPVParams(); return; }
+    var canvas=document.getElementById('pvCanvas');
+    if(!canvas) return;
+    PVEngine.create({
+      canvas:canvas, getFont:fontFamily,
+      onFallback:function(){ pvEngineFailed=true; document.body.classList.remove('pv-engine-on'); }
+    }).then(function(ok){
+      if(!ok || !PVEngine.isActive()) return;
+      document.body.classList.add('pv-engine-on');
+      lastPVFontKey=fontFamily();
+      PVEngine.setTransparent(!!config.ft_transparent);
+      applyPVParams();
+      var pos=(state&&state.positionMs?state.positionMs:0)/1000;
+      var ln=currentLine(pos);
+      if(ln) PVEngine.setText(ln.text||'');
+    }).catch(function(){ pvEngineFailed=true; document.body.classList.remove('pv-engine-on'); });
+  }
+  function destroyPVEngine(){
+    document.body.classList.remove('pv-engine-on');
+    if(window.PVEngine && PVEngine.isActive()){ try{ PVEngine.destroy(); }catch(e){} }
+  }
+  function pausePVEngine(){
+    document.body.classList.remove('pv-engine-on');
+    if(window.PVEngine && PVEngine.isActive()){ try{ PVEngine.setPaused(true); }catch(e){} }
+  }
+  // ---- 3D 长方体歌词块引擎接入（Three.js + GSAP，无 CSS 兜底：WebGL 不可用则该视图无输出） ----
+  var boxEngineFailed=false;
+  function boxNow(){
+    var posMs=(state&&state.positionMs)||0;
+    if(state&&state.status==='playing'&&state.updatedMs){ posMs+=Math.max(0,Date.now()-state.updatedMs)*(state.rate||1); }
+    return posMs/1000;
+  }
+  function applyBoxParams(){
+    if(!window.BoxEngine || !BoxEngine.isActive()) return;
+    BoxEngine.setParams({
+      size:(config.box_size||100)/100,
+      spacing:config.box_spacing||0,
+      color:config.box_color||'#ffffff',
+      glowColor:config.box_glow_color||'#78b4ff',
+      glow:(config.box_glow||90)/100,
+      alpha:(config.box_alpha||85)/100,
+      max:config.box_max||5,
+      stay:config.box_stay||4,
+      in:config.box_in||1,
+      out:config.box_out||1.2,
+      rot:config.box_rot==null?45:config.box_rot,
+      spin:config.box_spin==null?15:config.box_spin,
+      echo:config.box_echo==null?3:config.box_echo
+    });
+  }
+  function feedBox(){
+    if(!window.BoxEngine || !BoxEngine.isActive()) return;
+    BoxEngine.setLyrics((lines||[]).map(function(l){ return {time:l.time,text:l.text}; }));
+    BoxEngine.setTime(boxNow());
+  }
+  // 手动指定优先：pin 时只喂这一句（时间固定 0 常驻），否则喂完整歌词走自动
+  function feedBoxOrPin(){
+    if(!window.BoxEngine || !BoxEngine.isActive()) return;
+    if(pin&&pin.text){ BoxEngine.reset(); BoxEngine.setLyrics([{time:0,text:pin.text}]); BoxEngine.setTime(0); }
+    else feedBox();
+  }
+  function ensureBoxEngine(){
+    if(!window.BoxEngine || boxEngineFailed) return;
+    if(BoxEngine.isActive()){ BoxEngine.setPaused(false); applyBoxParams(); return; }
+    var canvas=document.getElementById('boxCanvas');
+    if(!canvas) return;
+    BoxEngine.create({
+      canvas:canvas, getFont:fontFamily,
+      onFallback:function(){ boxEngineFailed=true; }
+    }).then(function(ok){
+      if(!ok || !BoxEngine.isActive()) return;
+      BoxEngine.setTransparent(!!config.ft_transparent);
+      applyBoxParams();
+      feedBox();
+    }).catch(function(){ boxEngineFailed=true; });
+  }
+  function pauseBoxEngine(){
+    if(window.BoxEngine && BoxEngine.isActive()){ try{ BoxEngine.setPaused(true); }catch(e){} }
+  }
+  // PV 逐字撒开渲染（与桌面端同效果）
+  var pvCurText=null;
+  function pvRender(text){
+    if(text===pvCurText) return;
+    pvCurText=text;
+    elLine.innerHTML='';
+    if(!text) return;
+    Array.from(text).forEach(function(ch,i){
+      if(ch===' '){ var sp=document.createElement('span'); sp.className='pv-space'; elLine.appendChild(sp); return; }
+      var s=document.createElement('span'); s.className='pv-char'; s.textContent=ch;
+      s.style.setProperty('--rot',(Math.random()*56-28).toFixed(1)+'deg');
+      s.style.setProperty('--tx',(Math.random()*0.5-0.25).toFixed(2)+'em');
+      s.style.setProperty('--ty',(Math.random()*0.9-0.45).toFixed(2)+'em');
+      s.style.setProperty('--sc',(0.85+Math.random()*0.4).toFixed(2));
+      s.style.setProperty('--d',(i*0.07).toFixed(2)+'s');
+      elLine.appendChild(s);
+    });
+  }
+  function fmt(sec){ if(!isFinite(sec)||sec<0)sec=0; var m=Math.floor(sec/60),s=Math.floor(sec%60); return m+':'+String(s).padStart(2,'0'); }
+  function currentLine(t){ var cur=null; for(var i=0;i<lines.length;i++){ if(lines[i].time<=t) cur=lines[i]; else break; } return cur; }
+  // 歌综字幕：只显示当前句；新旧句叠放过场，新句立即入场（与桌面端一致）；动画可选轮换/固定
+  var SHOWFX=['fly','fade','pop','slide'], showFxI=0, showCurTxt=null;
+  function showPickFx(){
+    var fx=config.sh_anim;
+    if(!fx || fx==='rotate' || SHOWFX.indexOf(fx)<0){ showFxI=(showFxI+1)%SHOWFX.length; fx=SHOWFX[showFxI]; }
+    return fx;
+  }
+  function showSpd(){ var s=(config.sh_speed||100)/100; return Math.min(2, Math.max(.5, s)); }
+  function setShowLine(txt){
+    if(txt===showCurTxt) return;
+    showCurTxt=txt;
+    var spd=showSpd();
+    // 旧句退场：沿用它入场时的动效，播完移除（绝对定位叠放，不挡新句）
+    var olds=elStage.querySelectorAll('.sh-line');
+    for(var i=0;i<olds.length;i++){ (function(o){
+      var m=/\bin-(\w+)\b/.exec(o.className);
+      o.className='sh-line out-'+(m?m[1]:'fly');
+      var done=false;
+      var rm=function(){ if(done) return; done=true; try{ o.remove(); }catch(e){} };
+      o.addEventListener('animationend', rm);
+      setTimeout(rm, Math.round(900/spd));
+    })(olds[i]); }
+    if(!txt) return;
+    var c=document.createElement('div');
+    c.className='sh-line in-'+showPickFx();
+    c.textContent=txt;
+    elStage.appendChild(c);
+  }
+  // 跟随总闸关闭（或无播放）：一次性清空 PV/方块引擎与字幕残留，避免停在最后一帧
+  var outputStopped=false;
+  function clearOutputOnce(){
+    if(outputStopped) return; outputStopped=true;
+    if(window.PVEngine&&PVEngine.isActive()){ try{PVEngine.setText('');}catch(e){} }
+    if(window.BoxEngine&&BoxEngine.isActive()){ try{BoxEngine.reset();}catch(e){} }
+    pvCurText=null; showCurTxt=null;
+    var sl=elStage.querySelectorAll('.sh-line'); for(var i=0;i<sl.length;i++){ sl[i].remove(); }
+  }
+  // 手动指定优先：无视自动状态（含跟随已断开），强制显示指定那句
+  function renderPin(){
+    outputStopped=false;
+    elStage.classList.remove('hidden');
+    elTitle.textContent=(state&&state.title)||'';
+    elArtist.textContent=(state&&state.artist)||'';
+    document.body.classList.remove('np-playing');
+    if(config.view==='box'){
+      if(window.BoxEngine&&BoxEngine.isActive()&&!boxEngineFailed){ BoxEngine.setTime(0); }
+    } else if(config.view==='pv'){
+      if(window.PVEngine&&PVEngine.isActive()&&!pvEngineFailed){ PVEngine.setText(pin.text); }
+      else { elLine.classList.add('pv'); pvRender(pin.text); }
+    } else {
+      elLine.classList.remove('pv'); pvCurText=null;
+      if(config.view==='show'){ setShowLine(pin.text); }
+      else {
+        if(showCurTxt!==null){ showCurTxt=null; var so=elStage.querySelectorAll('.sh-line'); for(var i=0;i<so.length;i++){ so[i].remove(); } }
+        elLine.className=''; elLine.textContent=pin.text;
+      }
+    }
+  }
+  function render(){
+    if(pin&&pin.text){ renderPin(); return; }
+    if(!state||!state.ok||!state.title){ elStage.classList.add('hidden'); document.body.classList.remove('np-playing'); clearOutputOnce(); return; }
+    outputStopped=false;
+    elStage.classList.remove('hidden');
+    elTitle.textContent=state.title||'';
+    elArtist.textContent=state.artist||'';
+    document.body.classList.toggle('np-playing', state.status==='playing');
+    // 两次推送之间用墙钟插值，进度更平滑（与桌面端口径一致）
+    var posMs=state.positionMs||0;
+    if(state.status==='playing' && state.updatedMs){ posMs += Math.max(0, Date.now()-state.updatedMs)*(state.rate||1); }
+    var t=posMs/1000, dur=(state.durationMs||0)/1000;
+    var ln=currentLine(t);
+    if(config.view==='box'){
+      // 3D 方块：每 200ms 喂插值时间，引擎内部按句生成/离场；不走 #line
+      if(window.BoxEngine && BoxEngine.isActive() && !boxEngineFailed){ BoxEngine.setTime(t); }
+    }
+    else if(config.view==='pv'){
+      var ptxt=ln?ln.text:'';
+      if(window.PVEngine && PVEngine.isActive() && !pvEngineFailed){ PVEngine.setText(ptxt); }
+      else { elLine.classList.add('pv'); pvRender(ptxt); }
+    }
+    else {
+      elLine.classList.remove('pv'); pvCurText=null;
+      var txt=ln?ln.text:'';
+      if(config.view==='show'){ setShowLine(txt); }
+      else {
+        if(showCurTxt!==null){ showCurTxt=null; var so=elStage.querySelectorAll('.sh-line'); for(var si=0;si<so.length;si++){ so[si].remove(); } }
+        elLine.className=''; elLine.textContent=txt;
+      }
+    }
+    elCur.textContent=fmt(t);
+    elRem.textContent='-'+fmt(Math.max(0,dur-t));
+    elFill.style.width=(dur>0?Math.min(100,(t/dur)*100):0)+'%';
+    if(state.cover){
+      // 带封面源作版本参数：换歌后 URL 变化才触发重载与重新取色，否则永远旧封面
+      var want='/api/cover?v='+encodeURIComponent(String(state.cover));
+      if(elCover.getAttribute('src')!==want){
+        elCover.classList.remove('loaded');
+        elCover.onload=function(){ elCover.classList.add('loaded'); };
+        elCover.src=want;
+      }
+    } else { elCover.removeAttribute('src'); elCover.classList.remove('loaded'); }
+  }
+  setInterval(render, 200);
+
+  // ---- 卡片波形：14 柱合成律动，独立 rAF 按帧驱动（overlay 无音频源） ----
+  var WAVE_BARS=14, waveCur=[], wavePh=[], waveEls=[], waveT=0, waveLast=0;
+  (function initWave(){
+    var host=document.querySelector('.np-wave'); if(!host) return;
+    host.innerHTML='';
+    for(var i=0;i<WAVE_BARS;i++){ var b=document.createElement('i'); host.appendChild(b); waveEls.push(b); waveCur.push(0.12); wavePh.push(Math.random()*6.283); }
+  })();
+  function updateWave(now){
+    if(waveEls.length){
+      var dt=Math.min(0.05,(now-waveLast)/1000||0.016); waveLast=now; waveT+=dt;
+      var playing=document.body.classList.contains('np-playing');
+      for(var i=0;i<WAVE_BARS;i++){
+        var tgt;
+        if(!playing){ tgt=0.10+0.05*Math.sin(waveT*1.4+i*0.7); }
+        else{ var g=0.55+0.45*Math.sin(waveT*2.1+i*0.35); var v=Math.abs(Math.sin(waveT*(1.6+(i%5)*0.55)+wavePh[i])); tgt=0.14+0.86*v*g; }
+        waveCur[i]+=(tgt-waveCur[i])*(playing?0.35:0.12);
+        var hs=Math.round(Math.min(1,Math.max(0.06,waveCur[i]))*100)+'%';
+        if(waveEls[i].style.height!==hs) waveEls[i].style.height=hs;
+      }
+    }
+    requestAnimationFrame(updateWave);
+  }
+  requestAnimationFrame(updateWave);
+
+  // ---- 封面取色：best-effort 提取强调色写入 --accent/--accent-2，波形跟封面主色；跨域污染则保留默认 ----
+  function extractAccent(img){
+    try{
+      var s=40,c=document.createElement('canvas'); c.width=s; c.height=s;
+      var x=c.getContext('2d'); x.drawImage(img,0,0,s,s);
+      var d=x.getImageData(0,0,s,s).data, best=null, bestScore=-1;
+      for(var i=0;i<d.length;i+=4){
+        var r=d[i],g=d[i+1],b=d[i+2],a=d[i+3];
+        if(a<200) continue;
+        var mx=Math.max(r,g,b), mn=Math.min(r,g,b), bright=mx/255;
+        if(bright<0.18||bright>0.96) continue;
+        var sat=mx===0?0:(mx-mn)/mx, score=sat*1.25+bright*0.35;
+        if(score>bestScore){ bestScore=score; best=[r,g,b]; }
+      }
+      if(best){
+        document.documentElement.style.setProperty('--accent','rgb('+best[0]+','+best[1]+','+best[2]+')');
+        document.documentElement.style.setProperty('--accent-2','rgb('+Math.min(255,Math.round(best[0]*0.55+120))+','+Math.min(255,Math.round(best[1]*0.55+92))+','+Math.min(255,Math.round(best[2]*0.65+130))+')');
+      }
+    }catch(e){ /* 画布被跨域污染：保留默认强调色 */ }
+  }
+  elCover.addEventListener('load', function(){ extractAccent(elCover); });
+
+  function connect(){
+    var proto=location.protocol==='https:'?'wss:':'ws:';
+    var ws=new WebSocket(proto+'//'+location.host+'/ws');
+    ws.onmessage=function(e){
+      var m; try{ m=JSON.parse(e.data); }catch(err){ return; }
+      if(m.type==='state'){ state=m.data; render(); }
+      else if(m.type==='lines'){ lines=(m.data&&m.data.lines)||[]; if(window.BoxEngine&&BoxEngine.isActive()) feedBoxOrPin(); render(); }
+      else if(m.type==='config'){ config=m.data||{}; applyConfig(); }
+      else if(m.type==='pin'){ pin=m.data||null; feedBoxOrPin(); render(); }
+    };
+    ws.onclose=function(){ setTimeout(connect,1500); };
+    ws.onerror=function(){ try{ws.close();}catch(e){} };
+  }
+  // 先拉一次配置，避免首帧闪烁
+  fetch('/api/config').then(function(r){return r.json();}).then(function(c){ config=c||{}; applyConfig(); }).catch(function(){});
+  connect();
+})();
+</script>
+</body>
+</html>

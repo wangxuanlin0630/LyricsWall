@@ -1,0 +1,28 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  toggleFullscreen: () => ipcRenderer.invoke('window:toggleFullscreen'),
+  openAudio: () => ipcRenderer.invoke('dialog:openAudio'),
+  openLrc: () => ipcRenderer.invoke('dialog:openLrc'),
+  searchLyrics: (keyword) => ipcRenderer.invoke('lyrics:search', keyword),
+  getLyrics: (id) => ipcRenderer.invoke('lyrics:get', id),
+  startFollow: () => ipcRenderer.send('follow:start'),
+  stopFollow: () => ipcRenderer.send('follow:stop'),
+  onNowPlaying: (cb) => ipcRenderer.on('nowplaying', (_e, data) => cb(data)),
+  onLines: (cb) => ipcRenderer.on('lyrics-lines', (_e, data) => cb(data)),
+  setManualPin: (pin) => ipcRenderer.send('manual:set', pin),
+  onManualPin: (cb) => ipcRenderer.on('manual-pin', (_e, data) => cb(data)),
+  refreshLyrics: () => ipcRenderer.send('lyrics:refresh'),
+  realignProgress: (ms) => ipcRenderer.send('progress:realign', ms),
+  getServerUrl: () => ipcRenderer.invoke('server:info'),
+  openInBrowser: () => ipcRenderer.send('server:openBrowser'),
+  getConfig: () => ipcRenderer.invoke('config:get'),
+  setConfig: (patch) => ipcRenderer.invoke('config:set', patch),
+  onConfig: (cb) => ipcRenderer.on('config', (_e, data) => cb(data)),
+  listFonts: () => ipcRenderer.invoke('fonts:list'),
+  getActivePlayers: () => ipcRenderer.invoke('players:active'),
+  bgPick: () => ipcRenderer.invoke('bg:pick'),
+  winMinimize: () => ipcRenderer.send('window:minimize'),
+  winMaximize: () => ipcRenderer.send('window:maximize'),
+  winClose: () => ipcRenderer.send('window:close')
+});
