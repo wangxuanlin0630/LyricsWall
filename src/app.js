@@ -52,6 +52,41 @@
     eapi.onUpdateAvailable(show);
   })();
 
+  /* ---------------- 酷狗接入提示：主进程自动修补 libcef.dll 的状态横幅（复用更新横幅样式） ---------------- */
+  (function () {
+    const eapi = window.electronAPI;
+    if (!eapi || !eapi.onKugouPatchStatus) return;
+    let bar = null;
+    let hideTimer = null;
+    // 各阶段的直白文案（UAC 是系统弹窗无法避免，只需提前说明）
+    const TEXTS = {
+      checking: '检测到酷狗未开调试端口，正在检查组件…',
+      'need-uac': '正在修补酷狗组件，请在弹出的系统窗口中允许',
+      relaunch: '正在修补酷狗组件…',
+      done: '酷狗接入完成',
+    };
+    function show(stage, detail) {
+      try {
+        if (!bar) {
+          bar = document.createElement('div');
+          bar.id = 'kugouPatchBanner';
+          bar.innerHTML = '<span class="ub-text"></span><span class="ub-btns">' +
+            '<button class="ub-x" type="button" title="关闭提示">✕</button></span>';
+          document.body.appendChild(bar);
+          bar.querySelector('.ub-x').onclick = () => bar.classList.add('ub-hide');
+        }
+        const text = stage === 'failed'
+          ? '酷狗接入失败：' + (detail || '未知原因') + '（可在 GitHub 项目页反馈）'
+          : (TEXTS[stage] || '酷狗接入中…');
+        bar.querySelector('.ub-text').textContent = text;
+        bar.classList.remove('ub-hide');
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        if (stage === 'done') hideTimer = setTimeout(() => bar.classList.add('ub-hide'), 6000);
+      } catch (e) {}
+    }
+    eapi.onKugouPatchStatus((d) => show((d && d.stage) || '', (d && d.detail) || ''));
+  })();
+
   const RAINBOW = ['#ffffff', '#7fd4ff', '#ff9ecb', '#ffe28a', '#a0ffb0', '#c9a6ff'];
 
   /* ---------------- 配置（与 main.js DEFAULT_CONFIG 对齐）：所有元素/功能可开关 ---------------- */

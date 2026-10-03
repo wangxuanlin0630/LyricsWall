@@ -45,7 +45,8 @@ function splitFilename(filename) {
   return { artist: '', title: s };
 }
 
-function createKugouCdp(onEvent) {
+function createKugouCdp(onEvent, opts) {
+  const onPortClosed = (opts && opts.onPortClosed) || null;
   let ws = null;
   let msgId = 0;
   let pending = new Map();       // id -> {resolve,reject,timer}
@@ -60,8 +61,13 @@ function createKugouCdp(onEvent) {
   function setAvail(ok, reason) {
     const key = ok ? 'ok' : ('no:' + reason);
     if (lastAvail === key) return;
+    const prev = lastAvail;
     lastAvail = key;
     if (!ok) emit({ ok: false, reason });
+    // 端口关闭回调：只在「可用→不可用」跳变或首次判定时触发一次（不随每轮重连重复）
+    if (!ok && reason === 'port-closed' && prev !== 'no:port-closed') {
+      try { if (onPortClosed) onPortClosed(); } catch (e) {}
+    }
   }
 
   function httpGetJson(path) {

@@ -789,6 +789,23 @@ body.prev-mini #updateBanner { top: 46px; }
 #updateBanner .ub-go:hover { background: #1b5175; }
 #updateBanner .ub-x { cursor: pointer; border: 0; background: transparent; color: #7fa8c0; font-size: 12px; padding: 2px 4px; }
 #updateBanner .ub-x:hover { color: #fff; }
+
+/* ---------------- 酷狗接入提示横幅（复用 updateBanner 布局，暖色调区分） ---------------- */
+#kugouPatchBanner {
+  display: none; position: fixed; top: 46px; left: 50%; transform: translateX(-50%);
+  z-index: 56; align-items: center; gap: 10px; padding: 8px 12px;
+  background: linear-gradient(90deg, #2f2012, #241a0d); border: 1px solid rgba(255, 168, 46, .35);
+  border-radius: 10px; color: #fff0d8; font-size: 12px; letter-spacing: .04em;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .45);
+}
+#kugouPatchBanner.ub-hide { display: none !important; }
+body.app-console #kugouPatchBanner { display: flex; }
+body.prev-mini #kugouPatchBanner { top: 46px; }
+#kugouPatchBanner .ub-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#kugouPatchBanner .ub-btns { display: flex; align-items: center; gap: 6px; flex: none; }
+#kugouPatchBanner .ub-x { cursor: pointer; border: 0; background: transparent; color: #c0a88a; font-size: 12px; padding: 2px 4px; }
+#kugouPatchBanner .ub-x:hover { color: #fff; }
+
 /* 网页端不显示标题栏、状态条、导航 */
 body:not(.electron) #titlebar,
 body:not(.electron) #sideNav,

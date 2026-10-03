@@ -54,7 +54,7 @@ const PLAYER_REGEX = {
 // 专用适配器表：playerId → 是否已有比 SMTC 更准的专用来源
 const SPECIAL_ADAPTERS = { kugou: 'cdp' };
 
-function createPlayerManager(onUnified) {
+function createPlayerManager(onUnified, opts) {
   let smtc = null;
   let cdp = null;
   let nedb = null;       // 网易云进度适配器（读本地库补偿 SMTC 无时间轴）
@@ -154,7 +154,7 @@ function createPlayerManager(onUnified) {
     if (ev.ok) { lastCdp = ev; lastCdpOkAt = Date.now(); }
     else { lastCdp = ev; }
     recompute();
-  });
+  }, { onPortClosed: (opts && opts.onKugouPortClosed) || null });
 
   return {
     start() {

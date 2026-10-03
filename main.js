@@ -8,6 +8,7 @@ const { createPlayerManager } = require('./players/registry');
 const { createLyricsService } = require('./lyrics-service');
 const { createWallServer } = require('./server/http-server');
 const { createOutputWriter } = require('./server/output-writer');
+const kugouPatcher = require('./players/kugou-patcher');
 
 let mainWindow = null;
 let followActive = false;
@@ -267,7 +268,36 @@ const playerManager = createPlayerManager((ev) => {
   try { wallServer.broadcastState(ev); } catch (e) {}
   try { if (layoutConfig.ft_output) outputWriter.update(ev); } catch (e) {}
   try { lyricsService.handleEvent(ev); } catch (e) {}
-});
+}, { onKugouPortClosed: () => { try { tryAutoPatchKugou(); } catch (e) {} } });
+
+/* ------------------- 酷狗自动接入守卫：酷狗在跑但 CDP 端口没开 → 多半是 libcef.dll 未打补丁 -------------------
+ * 触发一次提权修补（UAC 弹窗无法避免），全程 try/catch 绝不影响主流程；
+ * 失败原因非「没装酷狗」时通知渲染端，且本会话不再重试（反复弹 UAC 是事故）。 */
+let kugouPatchTried = false;
+function kugouPatchStatus(stage, detail) {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('kugou:patch-status', { stage, detail: detail || '' });
+    }
+  } catch (e) {}
+}
+async function tryAutoPatchKugou() {
+  if (kugouPatchTried) return;
+  try {
+    // 酷狗没在跑则跳过且不消耗本次机会（端口没开可能只是酷狗未启动）
+    if (!(await kugouPatcher.isKuGouRunning())) return;
+    kugouPatchTried = true; // 本会话只尝试一次
+    kugouPatchStatus('checking');
+    const r = await kugouPatcher.ensurePatched({ onStatus: kugouPatchStatus });
+    if (r.ok) {
+      if (r.patched) kugouPatchStatus('done');
+    } else if (r.reason === 'not-installed') {
+      // 没装酷狗是正常情况，静默忽略
+    } else {
+      kugouPatchStatus('failed', r.reason + (r.detail ? '：' + r.detail : ''));
+    }
+  } catch (e) { /* 绝不影响主流程 */ }
+}
 
 function lanUrl() {
   let ip = '127.0.0.1';

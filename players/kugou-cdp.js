@@ -7,7 +7,7 @@
 
 const { createKugouCdp } = require('../kugou-cdp');
 
-function createKugouCdpAdapter(onEvent) {
+function createKugouCdpAdapter(onEvent, opts) {
   const inner = createKugouCdp((d) => {
     if (!onEvent) return;
     try {
@@ -41,7 +41,7 @@ function createKugouCdpAdapter(onEvent) {
         ts: Number(d.ts || Date.now()),
       });
     } catch (e) { /* 忽略单次异常 */ }
-  });
+  }, opts);
 
   return {
     start() { try { inner.start(); } catch (e) {} },
