@@ -6,7 +6,7 @@
 <title>动态歌词墙 · LyricsWall</title>
 <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="prev-large">
   <!-- SVG 图标精灵（统一描边风格，替代 emoji） -->
   <svg class="sprite" aria-hidden="true" focusable="false">
     <defs>
@@ -29,35 +29,12 @@
     </defs>
   </svg>
 
-  <!-- 自绘标题栏（无边框窗口用；网页端由 CSS 隐藏）：左标题｜中工具栏（原底部功能栏）｜右窗控 -->
+  <!-- 自绘标题栏：左标题+当前曲目｜右窗控；网页端由 CSS 隐藏 -->
   <div id="titlebar">
-    <div class="tb-title"><span class="tb-dot"></span>LyricsWall · 动态歌词墙</div>
-    <div id="controlBar">
-      <button id="btnPlay" class="cbtn primary" title="播放/暂停（本地）">
-        <svg class="ico ico-play"><use href="#i-play"/></svg>
-        <svg class="ico ico-pause"><use href="#i-pause"/></svg>
-      </button>
-      <button id="btnOpenAudio" class="cbtn" title="打开音频（本地）"><svg class="ico"><use href="#i-music"/></svg></button>
-      <button id="btnOpenLrc" class="cbtn" title="打开 LRC（本地）"><svg class="ico"><use href="#i-file"/></svg></button>
-      <button id="btnFollow" class="cbtn wide" title="跟随系统播放器"><svg class="ico"><use href="#i-link"/></svg><span class="lbl">跟随播放器</span></button>
-      <span class="cb-sep"></span>
-      <button id="btnPreviewToggle" class="cbtn" title="歌词预览面板"><svg class="ico"><use href="#i-list"/></svg></button>
-      <button id="btnLyrics" class="cbtn" title="歌词搜索/粘贴"><svg class="ico"><use href="#i-search"/></svg></button>
-      <button id="btnRefreshLyrics" class="cbtn" title="重新匹配歌词"><svg class="ico"><use href="#i-refresh"/></svg></button>
-      <button id="btnSettings" class="cbtn" title="控制台（元素/功能开关）"><svg class="ico"><use href="#i-settings"/></svg></button>
-      <button id="btnOpenWeb" class="cbtn" title="在浏览器打开（手机/多端）"><svg class="ico"><use href="#i-globe"/></svg></button>
-      <button id="btnFullscreen" class="cbtn" title="全屏 (F11)"><svg class="ico"><use href="#i-expand"/></svg></button>
-      <span class="cb-sep"></span>
-      <span class="cb-offset">
-        <button id="btnOffsetDown" class="cbtn sm" title="歌词提前"><svg class="ico"><use href="#i-minus"/></svg></button>
-        <span id="offsetVal">0.0s</span>
-        <button id="btnOffsetUp" class="cbtn sm" title="歌词延后"><svg class="ico"><use href="#i-plus"/></svg></button>
-        <button id="btnRealign" class="cbtn sm" title="重新对齐"><svg class="ico"><use href="#i-realign"/></svg></button>
-      </span>
-      <span class="cb-vol">
-        <svg class="ico"><use href="#i-music"/></svg>
-        <input type="range" id="volume" min="0" max="1" step="0.01" value="0.9" title="音量（本地）">
-      </span>
+    <div class="tb-title"><span class="tb-dot"></span>LyricsWall</div>
+    <div class="tb-track">
+      <span id="trackName">未加载音乐</span>
+      <span id="artistName" class="tb-artist"></span>
     </div>
     <div class="tb-controls">
       <button id="tbMin" class="tb-btn" title="最小化"><svg class="ico"><use href="#i-minus"/></svg></button>
@@ -66,126 +43,203 @@
     </div>
   </div>
 
-  <!-- 预览视口（最底层基底）：输出画面全部内嵌于此；桌面端由控制台切换全屏/内嵌半屏，网页端全屏输出 -->
-  <div id="previewPane">
-  <!-- 自定义/预设背景层（bg_mode 驱动；封面光晕模式时隐藏） -->
-  <div id="bgCustom"></div>
-  <!-- 封面环境光晕（用当前封面做大模糊背景，让玻璃真正透色） -->
-  <div id="bgGlow"></div>
-  <div id="bgVeil"></div>
+  <!-- 主区：左侧导航 + 工作区（预览 / 面板） -->
+  <div id="mainArea">
+    <nav id="sideNav">
+      <button class="sn-btn" data-nav="play" title="本地播放"><svg class="ico"><use href="#i-play"/></svg><span>播放</span></button>
+      <button class="sn-btn" data-nav="follow" title="跟随播放器"><svg class="ico"><use href="#i-link"/></svg><span>跟随</span></button>
+      <button class="sn-btn" data-nav="lyrics" title="歌词搜索 / 粘贴 / 预览"><svg class="ico"><use href="#i-search"/></svg><span>歌词</span></button>
+      <button class="sn-btn" data-nav="display" title="显示与特效设置"><svg class="ico"><use href="#i-settings"/></svg><span>显示</span></button>
+      <button class="sn-btn" data-nav="output" title="输出：网页 / OBS / 全屏"><svg class="ico"><use href="#i-globe"/></svg><span>输出</span></button>
+      <div class="sn-foot">
+        <button id="btnPrevMode" class="sn-btn" title="切换预览大小"><svg class="ico"><use href="#i-expand"/></svg><span>预览</span></button>
+      </div>
+    </nav>
 
-  <!-- 碎片漂浮主视觉 -->
-  <div id="stage"></div>
+    <div id="workArea">
+      <!-- 预览视口（输出画面全部内嵌于此；内部结构为输出端共享，不可改动） -->
+      <div id="previewPane">
+      <!-- 自定义/预设背景层（bg_mode 驱动；封面光晕模式时隐藏） -->
+      <div id="bgCustom"></div>
+      <!-- 封面环境光晕（用当前封面做大模糊背景，让玻璃真正透色） -->
+      <div id="bgGlow"></div>
+      <div id="bgVeil"></div>
 
-  <!-- 网页正式显示：卡片模式（iOS 黑白播放器卡 + AMLL 风居中大歌词） -->
-  <div id="displayView">
-    <div id="lyricCenter"><div id="lyricScroll"></div><div id="showStage"></div></div>
-    <div id="pvStage"><canvas id="pvCanvas"></canvas></div>
-    <div id="boxStage"><canvas id="boxCanvas"></canvas></div>
-    <div id="npCard">
-      <div class="np-info">
-        <div class="np-cover-wrap"><img id="npCover" alt=""></div>
-        <div class="np-text">
-          <div class="np-title"><div class="np-title-scroller" id="npTitleScroller"><span id="npTitle">Nothing Playing</span></div></div>
-          <div class="np-artist" id="npArtist"></div>
+      <!-- 碎片漂浮主视觉 -->
+      <div id="stage"></div>
+
+      <!-- 网页正式显示：卡片模式（iOS 黑白播放器卡 + AMLL 风居中大歌词） -->
+      <div id="displayView">
+        <div id="lyricCenter"><div id="lyricScroll"></div><div id="showStage"></div></div>
+        <div id="pvStage"><canvas id="pvCanvas"></canvas></div>
+        <div id="boxStage"><canvas id="boxCanvas"></canvas></div>
+        <div id="npCard">
+          <div class="np-info">
+            <div class="np-cover-wrap"><img id="npCover" alt=""></div>
+            <div class="np-text">
+              <div class="np-title"><div class="np-title-scroller" id="npTitleScroller"><span id="npTitle">Nothing Playing</span></div></div>
+              <div class="np-artist" id="npArtist"></div>
+            </div>
+            <div class="np-wave" id="npWave"><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="np-progress">
+            <span id="npCur" class="np-time">0:00</span>
+            <div class="np-bar-bg"><div id="npFill" class="np-bar-fill"></div></div>
+            <span id="npRem" class="np-time">-0:00</span>
+          </div>
         </div>
-        <div class="np-wave" id="npWave"><i></i><i></i><i></i><i></i></div>
       </div>
-      <div class="np-progress">
-        <span id="npCur" class="np-time">0:00</span>
-        <div class="np-bar-bg"><div id="npFill" class="np-bar-fill"></div></div>
-        <span id="npRem" class="np-time">-0:00</span>
+      </div><!-- /#previewPane -->
+
+      <!-- 显示模式切换（卡片/漂浮墙），网页与桌面预览均可用 -->
+      <div id="viewToggle">
+        <button class="vt-btn active" data-view="card">卡片</button>
+        <button class="vt-btn" data-view="wall">漂浮墙</button>
+        <button class="vt-btn" data-view="box">3D方块</button>
       </div>
-    </div>
-  </div>
-  </div><!-- /#previewPane -->
 
-  <!-- 显示模式切换（卡片/漂浮墙），网页与桌面预览均可用 -->
-  <div id="viewToggle">
-    <button class="vt-btn active" data-view="card">卡片</button>
-    <button class="vt-btn" data-view="wall">漂浮墙</button>
-    <button class="vt-btn" data-view="box">3D方块</button>
-  </div>
+      <!-- 功能面板区：同一时间只显示一页 -->
+      <div id="panelArea" class="hidden">
 
-  <!-- 左侧播放器卡片（仿 Now Playing / Apple Music） -->
-  <aside id="playerCard">
-    <div class="pc-cover-wrap">
+        <!-- 播放面板 -->
+        <section class="panel-page" data-page="play">
+          <div class="pp-head"><svg class="ico"><use href="#i-play"/></svg>本地播放</div>
+          <div class="pp-body">
+            <div class="pp-card">
+              <div class="pp-card-title">打开文件</div>
+              <div class="pp-row">
+                <button id="btnOpenAudio" class="cbtn" title="打开音频（本地）"><svg class="ico"><use href="#i-music"/></svg><span class="lbl">打开音频</span></button>
+                <button id="btnOpenLrc" class="cbtn" title="打开 LRC（本地）"><svg class="ico"><use href="#i-file"/></svg><span class="lbl">打开歌词</span></button>
+              </div>
+            </div>
+            <div class="pp-card">
+              <div class="pp-card-title">音量</div>
+              <div class="pp-row">
+                <svg class="ico"><use href="#i-music"/></svg>
+                <input type="range" id="volume" min="0" max="1" step="0.01" value="0.9" title="音量（本地）">
+              </div>
+            </div>
+            <div class="pp-hint">本地播放用于测试效果；正式使用请在「跟随」页接管系统播放器。</div>
+          </div>
+        </section>
+
+        <!-- 跟随面板 -->
+        <section class="panel-page" data-page="follow">
+          <div class="pp-head"><svg class="ico"><use href="#i-link"/></svg>跟随播放器</div>
+          <div class="pp-body">
+            <div class="pp-card">
+              <div class="pp-card-title">跟随开关</div>
+              <div class="pp-row">
+                <button id="btnFollow" class="cbtn wide" title="跟随系统播放器"><svg class="ico"><use href="#i-link"/></svg><span class="lbl">跟随播放器</span></button>
+              </div>
+            </div>
+            <div class="pp-card">
+              <div class="pp-card-title">选择播放器</div>
+              <div id="followPlayerSlot"></div>
+            </div>
+            <div class="pp-card">
+              <div class="pp-card-title">歌词匹配</div>
+              <div class="pp-row">
+                <button id="btnRefreshLyrics" class="cbtn" title="重新匹配歌词"><svg class="ico"><use href="#i-refresh"/></svg><span class="lbl">重新匹配歌词</span></button>
+              </div>
+            </div>
+            <div class="pp-hint">酷狗用户想零漂移同步，需先打直连补丁，详见 README「酷狗零漂移补丁」。</div>
+          </div>
+        </section>
+
+        <!-- 歌词面板：搜索 / 粘贴 / 预览 -->
+        <section class="panel-page" data-page="lyrics">
+          <div class="pp-head">
+            <svg class="ico"><use href="#i-search"/></svg>歌词
+            <div class="tabs pp-tabs">
+              <button class="tab active" data-tab="search">搜索</button>
+              <button class="tab" data-tab="paste">粘贴</button>
+              <button class="tab" data-tab="preview">预览</button>
+            </div>
+          </div>
+          <div class="pp-body pp-body-fill">
+            <div class="tab-body" data-body="search">
+              <div class="row">
+                <input id="searchInput" placeholder="歌名 / 歌手">
+                <button id="btnSearch">搜索</button>
+              </div>
+              <div id="searchResults" class="results"><div class="hint">输入关键词搜索在线歌词</div></div>
+            </div>
+            <div class="tab-body hidden" data-body="paste">
+              <textarea id="pasteArea" placeholder="粘贴 LRC 歌词文本…"></textarea>
+              <div class="row"><button id="btnApplyPaste">应用</button><button id="btnPreview">预览效果</button></div>
+            </div>
+            <div class="tab-body hidden" data-body="preview">
+              <div id="previewList"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 显示面板：原控制台（CONFIG_SCHEMA 动态生成） -->
+        <section class="panel-page" data-page="display">
+          <div class="pp-head">
+            <svg class="ico"><use href="#i-settings"/></svg><span id="csTitle">显示模式</span>
+          </div>
+          <div class="pp-body pp-body-fill display-split">
+            <nav id="csNav" class="cs-nav"></nav>
+            <div id="consoleBody" class="console-body"></div>
+          </div>
+        </section>
+
+        <!-- 输出面板 -->
+        <section class="panel-page" data-page="output">
+          <div class="pp-head"><svg class="ico"><use href="#i-globe"/></svg>输出</div>
+          <div class="pp-body">
+            <div class="pp-card">
+              <div class="pp-card-title">输出地址（手机 / OBS 浏览器源打开）</div>
+              <div id="serverUrl" class="pp-url"></div>
+              <div class="pp-row">
+                <button id="btnOpenWeb" class="cbtn" title="在浏览器打开（手机/多端）"><svg class="ico"><use href="#i-globe"/></svg><span class="lbl">浏览器打开</span></button>
+              </div>
+            </div>
+            <div class="pp-card">
+              <div class="pp-card-title">窗口</div>
+              <div class="pp-row">
+                <button id="btnFullscreen" class="cbtn" title="全屏 (F11)"><svg class="ico"><use href="#i-expand"/></svg><span class="lbl">全屏输出</span></button>
+              </div>
+            </div>
+            <div class="pp-hint">OBS 接入：添加「浏览器」源，URL 填上方地址，宽高填你的画布分辨率。</div>
+          </div>
+        </section>
+
+      </div><!-- /#panelArea -->
+    </div><!-- /#workArea -->
+  </div><!-- /#mainArea -->
+
+  <!-- 底部状态条：播放控制 + 进度 + 偏移 + 徽标（常驻；网页端隐藏） -->
+  <div id="statusBar">
+    <div class="sb-cover-wrap">
       <img id="cover" class="hidden" alt="">
-      <div class="pc-cover-empty" id="coverEmpty">
-        <svg class="ico"><use href="#i-music"/></svg>
-      </div>
+      <div class="sb-cover-empty" id="coverEmpty"><svg class="ico"><use href="#i-music"/></svg></div>
     </div>
-    <div class="pc-meta">
-      <div id="trackName">未加载音乐</div>
-      <div id="artistName"></div>
-    </div>
-    <div class="pc-progress">
+    <button id="btnPlay" class="cbtn primary" title="播放/暂停（本地）">
+      <svg class="ico ico-play"><use href="#i-play"/></svg>
+      <svg class="ico ico-pause"><use href="#i-pause"/></svg>
+    </button>
+    <div class="sb-progress">
+      <span id="curTime" class="sb-time">00:00</span>
       <input type="range" id="seek" min="0" max="1000" value="0">
-      <div class="pc-times"><span id="curTime">00:00</span><span id="durTime">00:00</span></div>
+      <span id="durTime" class="sb-time">00:00</span>
     </div>
-    <div class="pc-badges">
+    <div class="sb-offset">
+      <button id="btnOffsetDown" class="cbtn sm" title="歌词提前"><svg class="ico"><use href="#i-minus"/></svg></button>
+      <span id="offsetVal">0.0s</span>
+      <button id="btnOffsetUp" class="cbtn sm" title="歌词延后"><svg class="ico"><use href="#i-plus"/></svg></button>
+      <button id="btnRealign" class="cbtn sm" title="重新对齐"><svg class="ico"><use href="#i-realign"/></svg></button>
+    </div>
+    <div class="sb-badges">
       <span id="statusBadge" class="badge">已停止</span>
       <span id="syncStatus" class="badge hidden"></span>
       <span id="lrcBadge" class="badge">无歌词</span>
     </div>
-    <div id="serverUrl" class="pc-url"></div>
-  </aside>
-
-  <!-- 右侧滚动歌词预览面板 -->
-  <aside id="previewPanel" class="hidden">
-    <div class="panel-head">
-      <span class="ph-title"><svg class="ico"><use href="#i-list"/></svg>歌词预览</span>
-      <button class="close" data-close="previewPanel"><svg class="ico"><use href="#i-close"/></svg></button>
-    </div>
-    <div id="previewList"></div>
-  </aside>
-
-  <!-- 底部控制栏已并入顶部工具栏（#titlebar 内 #controlBar） -->
+  </div>
 
   <div id="syncHint" class="hint-bar"></div>
-
-  <!-- 歌词面板 -->
-  <div id="lyricsPanel" class="panel hidden">
-    <div class="panel-head">
-      <div class="tabs">
-        <button class="tab active" data-tab="search">搜索</button>
-        <button class="tab" data-tab="paste">粘贴</button>
-      </div>
-      <button class="close" data-close="lyricsPanel"><svg class="ico"><use href="#i-close"/></svg></button>
-    </div>
-    <div class="tab-body" data-body="search">
-      <div class="row">
-        <input id="searchInput" placeholder="歌名 / 歌手">
-        <button id="btnSearch">搜索</button>
-      </div>
-      <div id="searchResults" class="results"><div class="hint">输入关键词搜索在线歌词</div></div>
-    </div>
-    <div class="tab-body hidden" data-body="paste">
-      <textarea id="pasteArea" placeholder="粘贴 LRC 歌词文本…"></textarea>
-      <div class="row"><button id="btnApplyPaste">应用</button><button id="btnPreview">预览效果</button></div>
-    </div>
-  </div>
-
-  <!-- 控制台：设置页风格（左侧导航 + 分区内容卡片；桌面总控，同步驱动网页输出） -->
-  <div id="settingsPanel" class="hidden">
-    <div class="cs-wrap">
-      <aside class="cs-side">
-        <div class="cs-brand"><svg class="ico"><use href="#i-settings"/></svg><span>LyricsWall 控制台</span></div>
-        <nav id="csNav" class="cs-nav"></nav>
-        <div class="cs-side-foot">桌面总控 · 改动实时同步<br>网页 / 手机 / OBS 输出</div>
-      </aside>
-      <div class="cs-main">
-        <div class="cs-main-head">
-          <div id="csTitle" class="cs-title">显示模式</div>
-          <div class="cs-head-actions">
-            <button id="btnCsPreview" class="cs-headbtn" title="控制台/内嵌预览同屏">半屏预览</button>
-            <button id="btnCsClose" class="close cs-close" title="关闭控制台（全屏预览）"><svg class="ico"><use href="#i-close"/></svg></button>
-          </div>
-        </div>
-        <div id="consoleBody" class="console-body"></div>
-      </div>
-    </div>
-  </div>
 
   <audio id="audio"></audio>
 

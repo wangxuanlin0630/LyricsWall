@@ -57,8 +57,11 @@ body::after {
     linear-gradient(180deg, rgba(5,7,13,.35) 0%, rgba(5,7,13,.10) 40%, rgba(5,7,13,.55) 100%);
 }
 
-/* 预览视口：最底层基底，所有输出画面内嵌于此（桌面=可切换内嵌/全屏；网页=全屏输出） */
-#previewPane { position: fixed; inset: 0; z-index: 1; overflow: hidden; }
+/* ================= 应用框架：标题栏 / 主区（侧导航+工作区） / 状态条 ================= */
+body { display: flex; flex-direction: column; }
+
+/* 预览视口：输出画面基底（相对 #workArea 定位；桌面大预览铺满/小窗缩右上；网页=全屏输出） */
+#previewPane { position: absolute; inset: 0; z-index: 1; overflow: hidden; }
 
 /* 自定义/预设背景层（bg_mode 驱动；JS 设 background-image，CSS 控显隐/预设渐变） */
 #bgCustom {
@@ -114,7 +117,7 @@ body.bg-custom #bgCustom { display: block; }
 }
 
 /* ---------- 玻璃面板通用 ---------- */
-.glass, #playerCard, #previewPanel, .panel {
+.glass, #statusBar, .pp-card {
   background: var(--glass);
   border: 1px solid var(--glass-brd);
   backdrop-filter: blur(26px) saturate(160%);
@@ -125,59 +128,44 @@ body.bg-custom #bgCustom { display: block; }
     inset 0 1px 0 rgba(255, 255, 255, .10);
 }
 
-/* ---------- 左侧播放器卡片 ---------- */
-#playerCard {
-  position: fixed; left: 26px; top: 26px; width: 336px; padding: 20px;
-  display: flex; flex-direction: column; gap: 15px; z-index: 20;
+/* ---------- 底部状态条（封面 / 播放 / 进度 / 偏移 / 徽标） ---------- */
+#statusBar {
+  flex: none; height: 58px; z-index: 20;
+  display: flex; align-items: center; gap: 12px; padding: 0 14px;
+  border-radius: 0; border: none; border-top: 1px solid rgba(255,255,255,.08);
+  box-shadow: none;
+  background: rgba(11, 14, 22, .82);
 }
-.pc-cover-wrap {
-  position: relative; width: 100%; aspect-ratio: 1/1; border-radius: 18px;
+.sb-cover-wrap {
+  position: relative; width: 40px; height: 40px; flex: none; border-radius: 10px; overflow: hidden;
 }
 #cover {
   position: relative; z-index: 2;
-  width: 100%; height: 100%; object-fit: cover; border-radius: 18px;
-  box-shadow: 0 14px 40px rgba(0,0,0,.55);
+  width: 100%; height: 100%; object-fit: cover; border-radius: 10px;
   border: 1px solid rgba(255,255,255,.10);
 }
-.pc-cover-wrap::after {
-  content: ""; position: absolute; inset: 6% 8% -8%;
-  z-index: 1; border-radius: 18px;
-  background: inherit; filter: blur(22px); opacity: .5; transform: scaleY(-.35) translateY(-40%);
-}
-.pc-cover-empty {
+.sb-cover-empty {
   position: absolute; inset: 0; z-index: 1;
   display: flex; align-items: center; justify-content: center;
-  border-radius: 18px; color: var(--txt-faint);
-  background:
-    linear-gradient(145deg, rgba(255,255,255,.05), rgba(255,255,255,.01)),
-    radial-gradient(120% 120% at 30% 20%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%);
+  border-radius: 10px; color: var(--txt-faint);
+  background: linear-gradient(145deg, rgba(255,255,255,.05), rgba(255,255,255,.01));
   border: 1px solid rgba(255,255,255,.07);
 }
-.pc-cover-empty .ico { width: 54px; height: 54px; stroke-width: 1.4; opacity: .8; }
-#cover:not(.hidden) ~ .pc-cover-empty { opacity: 0; }
+.sb-cover-empty .ico { width: 18px; height: 18px; stroke-width: 1.6; opacity: .8; }
+#cover:not(.hidden) ~ .sb-cover-empty { opacity: 0; }
 
-.pc-meta #trackName {
-  font-size: 20px; font-weight: 700; line-height: 1.32; letter-spacing: .01em;
-  overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
-  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+.sb-progress { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.sb-time {
+  font-size: 11.5px; color: var(--txt-faint); flex: none;
+  font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; letter-spacing: .03em;
 }
-.pc-meta #artistName {
-  font-size: 13.5px; color: var(--txt-dim); margin-top: 5px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
+#seek { flex: 1; min-width: 60px; }
 
-.pc-progress { display: flex; flex-direction: column; gap: 6px; }
-.pc-times {
-  display: flex; justify-content: space-between;
-  font-size: 11.5px; color: var(--txt-faint);
-  font-variant-numeric: tabular-nums; font-feature-settings: "tnum";
-  letter-spacing: .03em;
-}
-.pc-url { font-size: 11px; color: var(--txt-faint); word-break: break-all; }
-.pc-url:empty { display: none; }
+.sb-offset { display: flex; align-items: center; gap: 3px; flex: none; }
+#offsetVal { font-size: 11.5px; color: var(--txt-dim); min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; }
 
 /* 徽标 */
-.pc-badges { display: flex; flex-wrap: wrap; gap: 7px; }
+.sb-badges { display: flex; flex-wrap: wrap; gap: 7px; flex: none; }
 .badge {
   font-size: 11px; padding: 4px 11px; border-radius: 999px; font-weight: 600;
   background: rgba(255,255,255,.08); color: var(--txt-dim);
@@ -189,27 +177,11 @@ body.bg-custom #bgCustom { display: block; }
 #statusBadge.play { background: color-mix(in srgb, var(--accent) 18%, transparent); color: color-mix(in srgb, var(--accent) 80%, #fff); border-color: color-mix(in srgb, var(--accent) 34%, transparent); }
 #lrcBadge.ok { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: #dcc7ff; border-color: color-mix(in srgb, var(--accent-2) 30%, transparent); }
 
-/* ---------- 右侧歌词预览面板 ---------- */
-#previewPanel {
-  position: fixed; right: 26px; top: 26px; bottom: 104px; width: 316px;
-  display: flex; flex-direction: column; z-index: 20; overflow: hidden;
-}
-.panel-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.08);
-  flex: none;
-}
-.ph-title { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--txt); }
-.ph-title .ico { width: 17px; height: 17px; color: var(--accent); }
-.panel-head .close {
-  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08);
-  color: var(--txt-dim); width: 28px; height: 28px; border-radius: 9px;
-  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
-  transition: all .2s;
-}
-.panel-head .close:hover { background: rgba(255,255,255,.14); color: #fff; }
-.panel-head .close .ico { width: 15px; height: 15px; }
-
+/* ---------- 歌词面板（搜索/粘贴/预览标签页） ---------- */
+.pp-tabs .tab { padding: 6px 14px; font-size: 12px; }
+.pp-tabs .tab.active { background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: #fff; }
+.pp-body-fill .tab-body { display: none; flex-direction: column; height: 100%; }
+.pp-body-fill .tab-body.active { display: flex; }
 #previewList { overflow-y: auto; padding: 10px 12px 22px; flex: 1; }
 .pv-row {
   display: flex; align-items: center; gap: 6px;
@@ -247,12 +219,40 @@ body.bg-custom #bgCustom { display: block; }
   100% { background: transparent; }
 }
 
-/* ---------- 功能栏（已并入顶部工具栏 #titlebar 中部） ---------- */
-#controlBar {
-  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center;
-  gap: 5px; padding: 0 10px; overflow: hidden;
-  -webkit-app-region: no-drag; app-region: no-drag;
+/* ================= 主区布局：导航栏 + 工作区 ================= */
+#mainArea {
+  flex: 1; min-height: 0; display: flex;
+  position: relative; z-index: 2;
 }
+
+/* ---------- 左侧导航栏 ---------- */
+#sideNav {
+  flex: none; width: 64px; z-index: 21;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 10px 0 6px; gap: 4px;
+  background: rgba(9, 12, 20, .82);
+  border-right: 1px solid rgba(255,255,255,.06);
+}
+.sn-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; width: 52px; height: 52px; padding: 0;
+  background: transparent; border: none; border-radius: 14px;
+  color: var(--txt-faint); cursor: pointer;
+  transition: background .2s, color .2s;
+}
+.sn-btn .ico { width: 20px; height: 20px; }
+.sn-btn span { font-size: 10px; letter-spacing: .02em; }
+.sn-btn:hover { background: rgba(255,255,255,.08); color: var(--txt-dim); }
+.sn-btn.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: color-mix(in srgb, var(--accent) 80%, #fff); }
+.sn-foot { margin-top: auto; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.06); }
+
+/* ---------- 工作区：预览 + 面板 ---------- */
+#workArea {
+  flex: 1; min-width: 0; position: relative;
+  display: flex; flex-direction: column;
+}
+
+/* 功能按钮（面板内复用） */
 .cbtn {
   position: relative; display: inline-flex; align-items: center; justify-content: center;
   gap: 5px; width: 26px; height: 26px; padding: 0; flex: none;
@@ -283,17 +283,49 @@ body.bg-custom #bgCustom { display: block; }
 #btnPlay.is-playing .ico-play { display: none; }
 #btnPlay.is-playing .ico-pause { display: block; }
 
-.cb-sep { width: 1px; height: 16px; background: rgba(255,255,255,.14); margin: 0 3px; flex: none; }
-.cb-offset { display: flex; align-items: center; gap: 3px; flex: none; }
-#offsetVal { font-size: 11.5px; color: var(--txt-dim); min-width: 32px; text-align: center; font-variant-numeric: tabular-nums; }
-.cb-vol { display: flex; align-items: center; gap: 5px; padding-left: 2px; color: var(--txt-dim); flex: none; }
-.cb-vol .ico { width: 14px; height: 14px; }
-#volume { width: 64px; }
-/* 窄窗时工具栏降级：隐藏文字/音量，保核心按钮 */
-@media (max-width: 1080px) { .cbtn.wide .lbl { display: none; } .cbtn.wide { width: 26px; padding: 0; } }
-@media (max-width: 920px) { .cb-vol { display: none; } }
+#offsetVal { font-size: 11.5px; color: var(--txt-dim); min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; }
 
-/* ---------- 面板（歌词/设置） ---------- */
+/* ---------- 面板区（导航切换显示） ---------- */
+#panelArea {
+  position: absolute; inset: 8px 8px 8px 8px; z-index: 18;
+  display: flex; flex-direction: column;
+  background: rgba(11, 14, 22, .92);
+  border: 1px solid rgba(255,255,255,.08); border-radius: var(--r-md);
+  overflow: hidden;
+}
+#panelArea.hidden { display: none !important; }
+.panel-page { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+.panel-page.active { display: flex; }
+
+.pp-head {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,.08);
+  font-size: 15px; font-weight: 700; color: #fff;
+}
+.pp-head .ico { width: 18px; height: 18px; color: var(--accent); }
+.pp-head .tabs { margin-left: auto; }
+
+.pp-body { flex: 1; overflow-y: auto; padding: 14px 16px 20px; }
+.pp-body-fill { padding: 0; }
+.pp-body-fill .tab-body { padding: 14px 16px; }
+
+.pp-card {
+  background: var(--glass); border: 1px solid var(--glass-brd);
+  backdrop-filter: blur(18px) saturate(140%);
+  border-radius: var(--r-sm); padding: 14px 16px; margin-bottom: 12px;
+}
+.pp-card-title { font-size: 13px; font-weight: 600; color: var(--txt-dim); margin-bottom: 10px; }
+.pp-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pp-hint { font-size: 12px; color: var(--txt-faint); line-height: 1.5; margin-top: 4px; }
+.pp-url { font-size: 12px; color: var(--txt-faint); word-break: break-all; background: rgba(255,255,255,.05); padding: 8px 10px; border-radius: 8px; margin-bottom: 10px; }
+.pp-url:empty { display: none; }
+
+/* 显示面板内控制台分裂布局 */
+.display-split { display: flex; flex-direction: row; padding: 0; }
+.display-split .cs-nav { flex: none; width: 180px; padding: 10px 8px; border-right: 1px solid rgba(255,255,255,.06); background: rgba(9,12,20,.6); }
+.display-split .console-body { flex: 1; overflow-y: auto; padding: 10px 16px 20px; }
+
+/* 旧面板兼容（歌词搜索/粘贴） */
 .panel {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: 92px;
   width: 476px; max-height: 62vh; display: flex; flex-direction: column;
@@ -345,7 +377,7 @@ body.bg-custom #bgCustom { display: block; }
 
 /* ---------- 提示条 ---------- */
 .hint-bar {
-  position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px;
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 66px;
   max-width: 660px; padding: 11px 18px; border-radius: 14px; font-size: 13px; line-height: 1.5;
   background: color-mix(in srgb, #ffbe46 14%, rgba(18,24,40,.7));
   border: 1px solid color-mix(in srgb, #ffbe46 32%, transparent); color: #ffd68f;
@@ -383,10 +415,15 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.15); }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.26); background-clip: content-box; }
 
 /* ================= 显示模式（桌面控制台预览 / 网页正式输出） ================= */
-/* 网页：隐藏控制台 chrome，只渲染正式输出视图 */
-body.app-display #playerCard,
-body.app-display #controlBar,
-body.app-display #previewPanel { display: none !important; }
+/* 网页：隐藏控制端 chrome，只渲染正式输出视图 */
+body.app-display #titlebar,
+body.app-display #sideNav,
+body.app-display #panelArea,
+body.app-display #statusBar,
+body.app-display #viewToggle,
+body.app-display #syncHint { display: none !important; }
+body.app-display #mainArea { flex: 1; }
+body.app-display #workArea { padding: 0; }
 /* 视图切换（由 config.view 驱动，桌面预览与网页输出保持一致）：card 显示卡片隐藏墙；wall 相反 */
 #displayView { display: none; }
 body.view-card #displayView { display: flex; }
@@ -580,7 +617,7 @@ body.sh-no-outline .show-cur {
 
 /* ---- 视图切换胶囊 ---- */
 #viewToggle {
-  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+  position: fixed; top: 44px; left: 50%; transform: translateX(-50%);
   z-index: 55; display: none; gap: 4px; padding: 4px;
   background: rgba(16, 22, 36, .5); border: 1px solid rgba(255,255,255,.10);
   backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
@@ -598,14 +635,34 @@ body.idle #viewToggle { opacity: 0; pointer-events: none; }
 
 .hidden { display: none !important; }
 
+/* ---------- 预览大小切换（大预览 / 右上角小窗） ---------- */
+body.prev-large #panelArea { display: none !important; }
+body.prev-mini #previewPane {
+  position: absolute; top: 14px; right: 14px; bottom: auto; left: auto;
+  width: min(400px, 42vw); height: min(225px, 24vw);
+  border-radius: 14px; border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 16px 50px rgba(0,0,0,.6); z-index: 30;
+}
+body.prev-mini #panelArea { display: flex; }
+body.prev-mini #workArea { padding: 0; }
+body.prev-mini #displayView { padding: 3vh 4% 4vh; gap: 2vh; }
+
+/* ---------- 窄屏适配 ---------- */
+@media (max-width: 900px) {
+  #statusBar .sb-badges { display: none; }
+  #statusBar .sb-offset { gap: 2px; }
+  .display-split { flex-direction: column; }
+  .display-split .cs-nav { width: 100%; border-right: none; border-bottom: 1px solid rgba(255,255,255,.06); padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .display-split .cs-nav-btn { flex: 1 1 auto; padding: 8px 10px; justify-content: center; }
+  .display-split .console-body { padding: 8px 12px 16px; }
+}
+
 /* ---------- 空闲隐藏控制件（工具栏常驻，不参与 idle 隐藏） ---------- */
-#playerCard, #previewPanel { transition: opacity .35s ease, transform .35s ease; }
-body.idle #playerCard { opacity: 0; pointer-events: none; transform: translateX(-14px); }
-body.idle #previewPanel { opacity: 0; pointer-events: none; transform: translateX(14px); }
+/* 已废弃：旧卡片/预览面板移除 */
 
 /* ---------- 自绘标题栏（仅桌面端） ---------- */
 #titlebar {
-  position: fixed; top: 0; left: 0; right: 0; height: 34px; z-index: 60;
+  flex: none; height: 34px; z-index: 60;
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 6px 0 14px;
   background: linear-gradient(180deg, rgba(9, 13, 22, .74), rgba(9, 13, 22, .26));
@@ -620,6 +677,12 @@ body.idle #previewPanel { opacity: 0; pointer-events: none; transform: translate
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   box-shadow: 0 0 9px color-mix(in srgb, var(--accent) 70%, transparent);
 }
+.tb-track {
+  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center;
+  gap: 10px; padding: 0 10px; overflow: hidden; pointer-events: none;
+}
+.tb-track #trackName { font-weight: 600; color: var(--txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-track .tb-artist { color: var(--txt-dim); font-size: 11.5px; white-space: nowrap; }
 .tb-controls { display: flex; gap: 4px; -webkit-app-region: no-drag; app-region: no-drag; }
 .tb-btn {
   width: 36px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
@@ -628,8 +691,9 @@ body.idle #previewPanel { opacity: 0; pointer-events: none; transform: translate
 }
 .tb-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
 .tb-btn.close:hover { background: #e81123; color: #fff; }
+.tb-btn .ico { width: 15px; height: 15px; stroke-width: 1.8; }
 
-/* ---------------- 更新提示横幅（仅控制台开启时显示） ---------------- */
+/* ---------------- 更新提示横幅（面板打开时显示） ---------------- */
 #updateBanner {
   display: none; position: fixed; top: 46px; left: 50%; transform: translateX(-50%);
   z-index: 55; align-items: center; gap: 10px; padding: 8px 12px;
@@ -637,8 +701,9 @@ body.idle #previewPanel { opacity: 0; pointer-events: none; transform: translate
   border-radius: 10px; color: #d8ecff; font-size: 12px; letter-spacing: .04em;
   box-shadow: 0 6px 22px rgba(0, 0, 0, .45);
 }
-body.app-console #updateBanner { display: flex; }
 #updateBanner.ub-hide { display: none !important; }
+body.app-console #updateBanner { display: flex; }
+body.prev-mini #updateBanner { top: 46px; }
 #updateBanner .ub-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #updateBanner .ub-btns { display: flex; align-items: center; gap: 6px; flex: none; }
 #updateBanner .ub-go {
@@ -648,12 +713,10 @@ body.app-console #updateBanner { display: flex; }
 #updateBanner .ub-go:hover { background: #1b5175; }
 #updateBanner .ub-x { cursor: pointer; border: 0; background: transparent; color: #7fa8c0; font-size: 12px; padding: 2px 4px; }
 #updateBanner .ub-x:hover { color: #fff; }
-.tb-btn .ico { width: 15px; height: 15px; stroke-width: 1.8; }
-/* 网页端不显示标题栏 */
-body:not(.electron) #titlebar { display: none; }
-/* 桌面端：卡片给顶部标题栏让位 */
-body.electron #playerCard { top: 58px; }
-body.electron #previewPanel { top: 58px; }
+/* 网页端不显示标题栏、状态条、导航 */
+body:not(.electron) #titlebar,
+body:not(.electron) #sideNav,
+body:not(.electron) #statusBar { display: none; }
 
 /* ---------- 窄屏适配 ---------- */
 @media (max-width: 900px) {
@@ -678,36 +741,8 @@ body.bg-transparent::before, body.bg-transparent::after { display: none !importa
 body.bg-transparent #bgGlow, body.bg-transparent #bgVeil, body.bg-transparent #bgCustom { display: none !important; }
 body.bg-transparent #npCard { display: none !important; }
 
-/* ================= 桌面控制台：设置页风格（左侧导航 + 分区内容卡片） ================= */
+/* ================= 显示面板内控制台（CONFIG_SCHEMA 动态生成） ================= */
 :root { --cs-accent: #2f7cf6; }
-#settingsPanel {
-  position: fixed; left: 0; right: 0; top: 34px; bottom: 0; transform: none;
-  width: auto; max-height: none; border-radius: 0; border: none; padding: 0;
-  background: #0b0d10; z-index: 45; display: flex;
-  container-type: inline-size; container-name: cspanel;
-}
-#settingsPanel.hidden { display: none; }
-/* 桌面三态：控制台是主界面底层主体，预览是内嵌视口（非浮层叠加）
-   pv-console＝全屏控制台｜pv-split＝控制台+内嵌预览窗｜pv-full＝全屏预览（网页端无类＝全屏输出） */
-body.app-console.pv-console #previewPane { display: none; }
-body.app-console.pv-split { --cs-w: clamp(380px, 46vw, 680px); }
-body.app-console.pv-split #settingsPanel { width: var(--cs-w); right: auto; }
-body.app-console.pv-split #previewPane {
-  left: calc(var(--cs-w) + 16px); top: 50px; right: 16px; bottom: 16px;
-  border-radius: 16px; border: 1px solid rgba(255,255,255,.09);
-  box-shadow: 0 20px 60px rgba(0,0,0,.55);
-}
-body.app-console.pv-full #settingsPanel { display: none; }
-/* 内嵌预览窗变窄：收紧内边距，避免 6vw 占用过多 */
-body.app-console.pv-split #displayView { padding: 4vh 4% 5vh; gap: 3vh; }
-.cs-wrap { display: flex; width: 100%; height: 100%; }
-/* 左侧导航 */
-.cs-side {
-  flex: none; width: 216px; display: flex; flex-direction: column;
-  border-right: 1px solid rgba(255,255,255,.06); padding: 18px 14px; background: #0b0d10;
-}
-.cs-brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 16px; color: #fff; font-weight: 700; font-size: 15px; }
-.cs-brand .ico { width: 20px; height: 20px; color: var(--cs-accent); }
 .cs-nav { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
 .cs-nav-btn {
   display: flex; align-items: center; gap: 12px; padding: 11px 12px; border: none;
@@ -717,26 +752,7 @@ body.app-console.pv-split #displayView { padding: 4vh 4% 5vh; gap: 3vh; }
 .cs-nav-btn .ico { width: 18px; height: 18px; flex: none; }
 .cs-nav-btn:hover { background: rgba(255,255,255,.05); color: #fff; }
 .cs-nav-btn.active { background: #1e2126; color: #fff; }
-.cs-side-foot { margin-top: auto; padding: 12px 10px 0; color: #6f7379; font-size: 12px; line-height: 1.7; }
-/* 主内容 */
-.cs-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #0b0d10; }
-.cs-main-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 20px 34px 8px; }
-.cs-head-actions { display: flex; align-items: center; gap: 10px; }
-.cs-headbtn {
-  background: var(--cs-accent); color: #fff; border: none; border-radius: 10px;
-  padding: 8px 16px; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: background .18s;
-}
-.cs-headbtn:hover { filter: brightness(1.1); }
-.cs-headbtn.active { background: #2b2e33; color: #d6d8db; }
-.cs-title { font-size: 24px; font-weight: 800; color: #fff; }
-.cs-close {
-  position: static; display: inline-flex; align-items: center; justify-content: center;
-  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08);
-  color: #b9bcc2; width: 32px; height: 32px; border-radius: 10px; cursor: pointer;
-}
-.cs-close:hover { background: rgba(255,255,255,.14); color: #fff; }
-.cs-close .ico { width: 16px; height: 16px; }
-.console-body { flex: 1; overflow-y: auto; padding: 6px 34px 40px; }
+.console-body { flex: 1; overflow-y: auto; padding: 6px 16px 20px; }
 .cs-sec-title { margin: 20px 0 12px; font-size: 17px; font-weight: 800; color: #fff; }
 /* 卡片行 */
 .cs-card {
@@ -778,18 +794,3 @@ body.app-console.pv-split #displayView { padding: 4vh 4% 5vh; gap: 3vh; }
 .cs-text { flex: 1; min-width: 0; }
 .cs-select:focus, .cs-text:focus { border-color: var(--cs-accent); }
 .cs-text::placeholder { color: #6f7379; }
-/* 控制台容器变窄（半屏/小窗）时自适应：侧栏收为图标条、内边距收紧 */
-@container cspanel (max-width: 640px) {
-  .cs-side { width: 60px; padding: 14px 8px; }
-  .cs-brand span, .cs-nav-btn span, .cs-side-foot { display: none; }
-  .cs-brand { justify-content: center; padding: 4px 0 12px; }
-  .cs-nav-btn { justify-content: center; padding: 11px 0; }
-  .cs-main-head { padding: 16px 18px 6px; }
-  .cs-title { font-size: 19px; }
-  .console-body { padding: 4px 18px 32px; }
-}
-@container cspanel (max-width: 460px) {
-  .cs-card { padding: 12px 14px; gap: 10px; }
-  .cs-select { min-width: 0; width: 100%; max-width: none; }
-  .cs-headbtn { padding: 7px 12px; font-size: 12.5px; }
-}

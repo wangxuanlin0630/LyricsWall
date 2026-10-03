@@ -232,22 +232,17 @@
     btnFullscreen: document.getElementById('btnFullscreen'),
     btnOpenAudio: document.getElementById('btnOpenAudio'),
     btnOpenLrc: document.getElementById('btnOpenLrc'),
-    btnLyrics: document.getElementById('btnLyrics'),
-    btnSettings: document.getElementById('btnSettings'),
-    btnCsPreview: document.getElementById('btnCsPreview'),
-    btnCsClose: document.getElementById('btnCsClose'),
     btnFollow: document.getElementById('btnFollow'),
     btnOpenWeb: document.getElementById('btnOpenWeb'),
     btnRefreshLyrics: document.getElementById('btnRefreshLyrics'),
+    btnPrevMode: document.getElementById('btnPrevMode'),
+    sideNav: document.getElementById('sideNav'),
+    panelArea: document.getElementById('panelArea'),
     seek: document.getElementById('seek'),
     volume: document.getElementById('volume'),
     curTime: document.getElementById('curTime'),
     durTime: document.getElementById('durTime'),
-    previewPanel: document.getElementById('previewPanel'),
     previewList: document.getElementById('previewList'),
-    btnPreviewToggle: document.getElementById('btnPreviewToggle'),
-    lyricsPanel: document.getElementById('lyricsPanel'),
-    settingsPanel: document.getElementById('settingsPanel'),
     searchInput: document.getElementById('searchInput'),
     btnSearch: document.getElementById('btnSearch'),
     searchResults: document.getElementById('searchResults'),
@@ -510,7 +505,7 @@
         const lyric = await wallAPI.getLyrics(s.id);
         if (lyric && lyric.text) {
           applyLrc(lyric.text, '在线：' + s.name);
-          el.lyricsPanel.classList.add('hidden');
+          closePanel();
         } else {
           el.searchResults.innerHTML = '<div class="hint">' + (lyric.error || '获取失败') + '</div>';
         }
@@ -900,9 +895,7 @@
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
     else if (e.key === 'F11' || e.key === 'f') { e.preventDefault(); toggleFullscreen(); }
     else if (e.key === 'Escape') {
-      el.lyricsPanel.classList.add('hidden');
-      el.previewPanel.classList.add('hidden');
-      if (isElectron) setConsoleState('full');   // 退出控制台→全屏预览
+      if (isElectron) closePanel();   // 退出控制台→大预览
     }
   });
 
@@ -910,39 +903,57 @@
   el.btnPlay.onclick = togglePlay;
   el.btnFullscreen.onclick = toggleFullscreen;
   el.btnOpenAudio.onclick = openAudio;
-  /* 控制台三态（控制台是主界面底层主体，预览为内嵌视口）：
-     console＝全屏控制台｜split＝控制台+内嵌预览窗｜full＝全屏预览 */
-  function setConsoleState(mode) {
-    document.body.classList.remove('pv-console', 'pv-split', 'pv-full');
-    document.body.classList.add('pv-' + mode);
-    el.settingsPanel.classList.remove('hidden');
-    if (el.btnCsPreview) {
-      const split = mode === 'split';
-      el.btnCsPreview.classList.toggle('active', split);
-      el.btnCsPreview.textContent = split ? '收起预览' : '半屏预览';
-    }
-    // 视口尺寸变化后重排居中歌词/PV
-    if (viewMode === 'card' || viewMode === 'pv') highlightCenter(centerCur, true);
-  }
-  const isConsoleHidden = () => document.body.classList.contains('pv-full');
-
   el.btnOpenLrc.onclick = openLrcFile;
-  el.btnLyrics.onclick = () => { setConsoleState('full'); el.previewPanel.classList.add('hidden'); el.lyricsPanel.classList.toggle('hidden'); };
-  el.btnSettings.onclick = () => { el.lyricsPanel.classList.add('hidden'); el.previewPanel.classList.add('hidden'); setConsoleState(isConsoleHidden() ? 'console' : 'full'); };
-  // 半屏预览：控制台主体 + 右侧内嵌预览窗（非浮层叠加）
-  if (el.btnCsPreview) {
-    el.btnCsPreview.onclick = () => setConsoleState(document.body.classList.contains('pv-split') ? 'console' : 'split');
-  }
-  if (el.btnCsClose) el.btnCsClose.onclick = () => setConsoleState('full');
-  el.btnPreviewToggle.onclick = () => { el.lyricsPanel.classList.add('hidden'); setConsoleState('full'); el.previewPanel.classList.toggle('hidden'); };
   el.btnSearch.onclick = doSearch;
   el.searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
-  el.btnApplyPaste.onclick = () => { applyLrc(el.pasteArea.value, '粘贴歌词'); el.lyricsPanel.classList.add('hidden'); };
+  el.btnApplyPaste.onclick = () => { applyLrc(el.pasteArea.value, '粘贴歌词'); };
   el.btnPreview.onclick = () => animator.spawn('动态歌词墙 ✦ 预览效果', 4);
   el.btnOpenWeb.onclick = () => wallAPI.openInBrowser();
   el.btnRefreshLyrics.onclick = () => {
     if (isElectron && window.electronAPI.refreshLyrics) window.electronAPI.refreshLyrics();
   };
+
+  /* 侧导航 + 面板切换：点击导航 → 打开面板并切小窗预览；再点同项 → 关闭面板回大预览 */
+  let curPanel = null;
+  function showPanel(name) {
+    if (!name || name === curPanel) { closePanel(); return; }
+    curPanel = name;
+    el.panelArea.classList.remove('hidden');
+    document.body.classList.remove('prev-large');
+    document.body.classList.add('prev-mini');
+    document.querySelectorAll('#sideNav .sn-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.nav === name));
+    document.querySelectorAll('.panel-page').forEach(p =>
+      p.classList.toggle('active', p.dataset.page === name));
+    if (viewMode === 'card' || viewMode === 'pv') highlightCenter(centerCur, true);
+  }
+  function closePanel() {
+    curPanel = null;
+    el.panelArea.classList.add('hidden');
+    document.body.classList.remove('prev-mini');
+    document.body.classList.add('prev-large');
+    document.querySelectorAll('#sideNav .sn-btn').forEach(b => b.classList.remove('active'));
+  }
+  document.querySelectorAll('#sideNav .sn-btn[data-nav]').forEach(b => {
+    b.onclick = () => showPanel(b.dataset.nav);
+  });
+  if (el.btnPrevMode) {
+    el.btnPrevMode.onclick = () => {
+      if (curPanel) { closePanel(); return; }
+      document.body.classList.toggle('prev-mini');
+      document.body.classList.toggle('prev-large');
+    };
+  }
+
+  /* 歌词面板标签切换（仅作用于歌词面板内） */
+  document.querySelectorAll('#panelArea [data-page="lyrics"] .tab').forEach(tab => {
+    tab.onclick = () => {
+      const name = tab.dataset.tab;
+      tab.parentElement.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+      document.querySelectorAll('#panelArea [data-page="lyrics"] .tab-body').forEach(b =>
+        b.classList.toggle('hidden', b.dataset.body !== name));
+    };
+  });
 
   /* ---------------- 跟随 & 偏移 ---------------- */
   function setFollowLabel(t) { const l = el.btnFollow.querySelector('.lbl'); if (l) l.textContent = t; }
@@ -996,19 +1007,10 @@
   };
 
   document.querySelectorAll('.close').forEach((b) => {
-    if (b.id === 'btnCsClose') return;              // 控制台关闭钮走三态切换，不用通用 hidden
     if (b.id === 'tbClose') return;                 // 标题栏关闭钮 = 关窗口（winClose），绝不能被这里覆盖
     b.onclick = () => { if (b.dataset.close) document.getElementById(b.dataset.close).classList.add('hidden'); };
   });
-  document.querySelectorAll('.tab').forEach((tab) => {
-    tab.onclick = () => {
-      const name = tab.dataset.tab;
-      document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
-      document.querySelectorAll('.tab-body').forEach((b) =>
-        b.classList.toggle('hidden', b.dataset.body !== name)
-      );
-    };
-  });
+  // 歌词面板外的 tab 绑定已移除，由面板路由统一控制
 
   /* ---------------- 配置应用：样式 → 动画器 / 律动 ---------------- */
   function applyStyle(cfg) {
@@ -1352,6 +1354,10 @@
         it.options.forEach((opt, i) => { if (btns[i]) btns[i].classList.toggle('active', opt[0] === v); });
       };
     } else if (it.type === 'player') {
+      // 播放器选择不进 schema 常规渲染流，挂载到「跟随」面板的 #followPlayerSlot
+      const slot = document.getElementById('followPlayerSlot');
+      if (!slot) return null;
+      slot.innerHTML = '';
       card.className = 'cs-card cs-card-col';
       card.appendChild(txtBlock(it));
       const chips = document.createElement('div'); chips.className = 'cs-chips cs-player-chips';
@@ -1369,8 +1375,10 @@
         it.options.forEach((opt) => { if (chipMap[opt[0]]) chipMap[opt[0]].classList.toggle('active', opt[0] === v); });
       };
       playerChipMap = chipMap;   // 供活跃绿点刷新使用
+      slot.appendChild(card);
       if (isElectron && !playerPollStarted) { playerPollStarted = true; setInterval(refreshActivePlayers, 3000); }
       refreshActivePlayers();
+      return null;
     } else if (it.type === 'action') {
       card.className = 'cs-card';
       card.appendChild(txtBlock(it));
@@ -1406,7 +1414,7 @@
       sec.className = 'cs-section' + (gi === 0 ? '' : ' hidden');
       const h = document.createElement('div'); h.className = 'cs-sec-title'; h.textContent = group.group;
       sec.appendChild(h);
-      group.items.forEach((it) => sec.appendChild(buildControl(it)));
+      group.items.forEach((it) => { const c = buildControl(it); if (c) sec.appendChild(c); });
       body.appendChild(sec);
       csSections.push(sec);
     });
@@ -1654,12 +1662,10 @@
     wallAPI.getConfig().then((cfg) => applyConfig(cfg || {})).catch(() => {});
     wallAPI.onConfig((cfg) => applyConfig(cfg));
   } else {
-    // 桌面：主界面底层＝控制台（启动先展示）；预览为内嵌视口，三态切换
+    // 桌面：大预览为底，面板由左侧导航按需打开
     document.body.classList.add('app-console');
     buildConsole();
     applyConfig({});
-    el.settingsPanel.classList.remove('hidden');
-    setConsoleState('console');
     wallAPI.getConfig().then((cfg) => applyConfig(migrateLegacyTy(cfg || {}))).catch(() => {});
     wallAPI.onConfig((cfg) => applyConfig(cfg));
     wallAPI.getServerUrl().then((info) => {
