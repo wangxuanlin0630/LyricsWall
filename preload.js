@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setManualPin: (pin) => ipcRenderer.send('manual:set', pin),
   onManualPin: (cb) => ipcRenderer.on('manual-pin', (_e, data) => cb(data)),
   refreshLyrics: () => ipcRenderer.send('lyrics:refresh'),
+  setManualLyrics: (text) => ipcRenderer.invoke('lyrics:setManual', text),
   realignProgress: (ms) => ipcRenderer.send('progress:realign', ms),
   getServerUrl: () => ipcRenderer.invoke('server:info'),
   openInBrowser: () => ipcRenderer.send('server:openBrowser'),

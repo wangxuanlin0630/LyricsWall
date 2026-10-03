@@ -250,6 +250,9 @@
     pasteArea: document.getElementById('pasteArea'),
     btnApplyPaste: document.getElementById('btnApplyPaste'),
     btnPreview: document.getElementById('btnPreview'),
+    btnCopyLrc: document.getElementById('btnCopyLrc'),
+    btnAutoLrc: document.getElementById('btnAutoLrc'),
+    pvSource: document.getElementById('pvSource'),
     btnOffsetUp: document.getElementById('btnOffsetUp'),
     btnOffsetDown: document.getElementById('btnOffsetDown'),
     btnRealign: document.getElementById('btnRealign'),
@@ -285,6 +288,7 @@
   /* ---------------- 歌词应用 ---------------- */
   // 手动/本地/粘贴：解析 LRC 文本
   function applyLrc(text, sourceName) {
+    lastRawLrc = text || '';
     const parsed = LRC.parse(text);
     setLines(parsed.lines, sourceName);
   }
@@ -305,9 +309,11 @@
     if (lines.length) {
       el.lrcBadge.textContent = sourceName || ('已加载 ' + lines.length + ' 句');
       el.lrcBadge.classList.add('ok');
+      if (el.pvSource) el.pvSource.textContent = (sourceName || '已加载歌词') + ' · ' + lines.length + ' 句';
     } else {
       el.lrcBadge.textContent = '无歌词';
       el.lrcBadge.classList.remove('ok');
+      if (el.pvSource) el.pvSource.textContent = '未加载歌词';
     }
     renderPreviewList();
     renderCenterList();
@@ -483,6 +489,27 @@
     if (lyric && lyric.text) applyLrc(lyric.text, '在线：' + songs[0].name);
   }
 
+  // 手动歌词原文（复制用）；自动匹配广播到达时清空，回退为按 lines 生成 LRC
+  let lastRawLrc = '';
+  const MANUAL_ERR_TEXT = {
+    'no-playing': '未检测到正在播放的歌曲，请先在「跟随」页开启跟随',
+    'empty': '没解析到歌词行：纯文本需要播放器提供歌曲时长才能分配时间轴',
+    'no-key': '当前歌曲信息不全，无法绑定',
+  };
+  function manualErrText(err) { return MANUAL_ERR_TEXT[err] || ('应用失败：' + (err || '未知错误')); }
+
+  // 跟随模式：手动歌词交主进程（广播全端、自动匹配不覆盖、切歌自动失效）；本地模式：直接解析应用
+  async function applyManualLyric(text) {
+    if (followMode && isElectron) {
+      const r = await wallAPI.setManualLyrics(text);
+      return (r && r.ok) ? { ok: true, count: r.count } : { ok: false, error: manualErrText(r && r.error) };
+    }
+    const parsed = LRC.parse(text);
+    if (!parsed.lines.length) return { ok: false, error: '本地播放模式请粘贴带 [mm:ss] 时间轴的 LRC' };
+    applyLrc(text, '手动歌词');
+    return { ok: true, count: parsed.lines.length };
+  }
+
   async function doSearch() {
     const kw = el.searchInput.value.trim();
     if (!kw) return;
@@ -500,16 +527,30 @@
       item.className = 'result-item';
       item.innerHTML = '<div class="t"></div><div class="s"></div>';
       item.querySelector('.t').textContent = s.name;
-      item.querySelector('.s').textContent = (s.artist || '') + (s.album ? ' · ' + s.album : '');
+      const subEl = item.querySelector('.s');
+      const subText = (s.artist || '') + (s.album ? ' · ' + s.album : '');
+      subEl.textContent = subText;
       item.onclick = async () => {
-        el.searchResults.innerHTML = '<div class="hint">加载歌词中…</div>';
+        if (item.dataset.busy === '1') return;
+        item.dataset.busy = '1';
+        item.classList.add('picked');
+        subEl.textContent = '加载歌词中…';
         const lyric = await wallAPI.getLyrics(s.id);
         if (lyric && lyric.text) {
-          applyLrc(lyric.text, '在线：' + s.name);
-          closePanel();
+          const r = await applyManualLyric(lyric.text);
+          if (r.ok) {
+            lastRawLrc = lyric.text;
+            subEl.textContent = '✓ 已应用 · ' + subText;
+            switchLyricsTab('preview');   // 立刻在预览标签展示完整歌词（可点选/复制）
+          } else {
+            subEl.textContent = r.error + '（点此重试）';
+            item.classList.remove('picked');
+          }
         } else {
-          el.searchResults.innerHTML = '<div class="hint">' + (lyric.error || '获取失败') + '</div>';
+          subEl.textContent = (lyric.error || '获取失败') + '（点此重试）';
+          item.classList.remove('picked');
         }
+        item.dataset.busy = '';
       };
       el.searchResults.appendChild(item);
     }
@@ -704,7 +745,10 @@
   // 主进程广播歌词行（多端同一份）
   wallAPI.onLines((payload) => {
     if (!payload) return;
+    // 自动匹配的词到来时清掉手动原文（复制改由当前行生成）；手动词的广播保留原文
+    if (payload.source !== 'manual') lastRawLrc = '';
     const srcLabel =
+      payload.source === 'manual' ? '手动歌词' :
       payload.source === 'kugou-hash' ? '酷狗本地(精确)' :
       payload.source === 'kugou-local' ? '酷狗本地' :
       payload.source === 'online' ? '在线' : '歌词';
@@ -907,11 +951,71 @@
   el.btnOpenLrc.onclick = openLrcFile;
   el.btnSearch.onclick = doSearch;
   el.searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
-  el.btnApplyPaste.onclick = () => { applyLrc(el.pasteArea.value, '粘贴歌词'); };
+  el.btnApplyPaste.onclick = async () => {
+    const text = el.pasteArea.value.trim();
+    if (!text) { flashBtn(el.btnApplyPaste, '请先粘贴歌词', 1500); return; }
+    const r = await applyManualLyric(text);
+    if (!r.ok) { flashBtn(el.btnApplyPaste, r.error, 2200); return; }
+    lastRawLrc = el.pasteArea.value;
+    switchLyricsTab('preview');
+  };
   el.btnPreview.onclick = () => animator.spawn('动态歌词墙 ✦ 预览效果', 4);
   el.btnOpenWeb.onclick = () => wallAPI.openInBrowser();
   el.btnRefreshLyrics.onclick = () => {
-    if (isElectron && window.electronAPI.refreshLyrics) window.electronAPI.refreshLyrics();
+    if (isElectron && window.electronAPI.refreshLyrics) {
+      window.electronAPI.refreshLyrics();
+      el.lrcBadge.textContent = '匹配歌词中…';
+      el.lrcBadge.classList.remove('ok');
+    }
+  };
+
+  // 复制歌词：优先最近一次原文（搜索/粘贴/本地文件），否则由当前行生成标准 LRC
+  function fmtLrcStamp(t) {
+    const m = Math.floor(t / 60);
+    const s = Math.floor(t % 60);
+    const cs = Math.round((t - Math.floor(t)) * 100);
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') + '.' + String(cs).padStart(2, '0');
+  }
+  function buildLrcText() {
+    if (lastRawLrc && lastRawLrc.trim()) return lastRawLrc;
+    return lines.map((ln) => '[' + fmtLrcStamp(ln.time) + ']' + ln.text).join('\n');
+  }
+  function legacyCopy(text) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove(); return ok;
+    } catch (e) { return false; }
+  }
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(() => true).catch(() => legacyCopy(text));
+    }
+    return Promise.resolve(legacyCopy(text));
+  }
+  function flashBtn(btn, msg, ms) {
+    if (!btn) return;
+    const old = btn.dataset.oldText || btn.textContent;
+    if (!btn.dataset.oldText) btn.dataset.oldText = old;
+    btn.textContent = msg;
+    clearTimeout(btn._flashTimer);
+    btn._flashTimer = setTimeout(() => { btn.textContent = btn.dataset.oldText; btn.classList.remove('ok-flash'); }, ms || 1500);
+  }
+  if (el.btnCopyLrc) el.btnCopyLrc.onclick = async () => {
+    const text = buildLrcText();
+    if (!text.trim()) { flashBtn(el.btnCopyLrc, '暂无歌词', 1300); return; }
+    const ok = await copyText(text);
+    el.btnCopyLrc.classList.toggle('ok-flash', ok);
+    flashBtn(el.btnCopyLrc, ok ? '已复制 ' + lines.length + ' 行' : '复制失败', 1500);
+  };
+  if (el.btnAutoLrc) el.btnAutoLrc.onclick = () => {
+    if (!(isElectron && followMode && window.electronAPI.refreshLyrics)) { flashBtn(el.btnAutoLrc, '仅跟随播放时可用', 1500); return; }
+    window.electronAPI.refreshLyrics();
+    el.lrcBadge.textContent = '匹配歌词中…';
+    el.lrcBadge.classList.remove('ok');
+    flashBtn(el.btnAutoLrc, '正在恢复自动匹配…', 1500);
   };
 
   /* 侧导航 + 面板切换：点击导航 → 打开面板并切小窗预览；再点同项 → 关闭面板回大预览 */
@@ -1016,17 +1120,19 @@
     });
   })();
 
-  /* 歌词面板标签切换（仅作用于歌词面板内） */
+  /* 歌词面板标签切换（仅作用于歌词面板内），代码内选择版本/粘贴应用后也可调它跳到预览 */
+  function switchLyricsTab(name) {
+    const page = document.querySelector('#panelArea [data-page="lyrics"]');
+    if (!page) return;
+    page.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    page.querySelectorAll('.tab-body').forEach(b => {
+      const on = b.dataset.body === name;
+      b.classList.toggle('hidden', !on);
+      b.classList.toggle('active', on);
+    });
+  }
   document.querySelectorAll('#panelArea [data-page="lyrics"] .tab').forEach(tab => {
-    tab.onclick = () => {
-      const name = tab.dataset.tab;
-      tab.parentElement.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
-      document.querySelectorAll('#panelArea [data-page="lyrics"] .tab-body').forEach(b => {
-        const on = b.dataset.body === name;
-        b.classList.toggle('hidden', !on);
-        b.classList.toggle('active', on);
-      });
-    };
+    tab.onclick = () => switchLyricsTab(tab.dataset.tab);
   });
 
   /* ---------------- 跟随 & 偏移 ---------------- */

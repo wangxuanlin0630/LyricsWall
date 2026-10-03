@@ -305,8 +305,25 @@ function createLyricsService(onLines, cacheDir) {
   let resolving = false;
   let pendingEv = null;       // 解析进行中到来的“最新”事件：切歌/下一曲时不丢失
   let onlineEnabled = true;   // 在线歌词兜底开关（桌面总控可关）
+  let manual = null;          // 用户手动指定歌词 { key, payload }；切歌或重新匹配时自动失效
 
   function emit(payload) { if (onLines) { try { onLines(payload); } catch (e) {} } }
+
+  // 用户手动歌词（搜索选定版本/粘贴 LRC）：绑定当前歌曲 key，覆盖自动匹配结果并广播全端；
+  // 无时间轴的纯文本按当前歌曲时长合成。切到别的歌（handle 检测 key 变化）自动放弃，恢复自动匹配。
+  function setManual(ev, text) {
+    if (!ev || !ev.ok) return { ok: false, error: 'no-playing' };
+    const key = ev.nid ? ('nid:' + ev.nid) : (ev.hash || ((ev.title || '') + '|' + (ev.artist || '')));
+    if (!key) return { ok: false, error: 'no-key' };
+    let lines = parseLrc(text);
+    if (!lines.length) lines = synthesizeTimeline(text, Number(ev.durationMs) || 0);
+    if (!lines.length) return { ok: false, error: 'empty' };
+    const payload = { key, title: ev.title || '', artist: ev.artist || '', source: 'manual', lines };
+    manual = { key, payload };
+    emit(payload);
+    return { ok: true, count: lines.length };
+  }
+  function clearManual() { manual = null; }
 
   // 串行解析 + 接力：解析旧歌时若切到新歌，记住最新事件；旧歌解析完立即接力新歌，
   // 并丢弃过期的旧歌结果（修复“切歌/下一曲后无歌词、需手动同步”）。
@@ -314,6 +331,7 @@ function createLyricsService(onLines, cacheDir) {
     if (!ev || !ev.ok) return;
     const key = ev.nid ? ('nid:' + ev.nid) : (ev.hash || ((ev.title || '') + '|' + (ev.artist || '')));
     if (!key || key === currentKey) return;
+    if (manual && manual.key !== key) manual = null;   // 切歌：手动词只对原歌曲生效，新歌恢复自动匹配
     if (resolving) { pendingEv = ev; return; }   // 正在解析：暂存最新事件，完成后接力
     currentKey = key;
     resolving = true;
@@ -322,6 +340,8 @@ function createLyricsService(onLines, cacheDir) {
       // 有效结果回写本地缓存（即便因切歌被丢弃未广播，也存下供下次秒开/离线）
       if (res && !res.cached && Array.isArray(res.lines) && res.lines.length && res.source !== 'none') cache.put(res);
       if (pendingEv) { drain(); return; }         // 已有更新的歌：丢弃旧结果，直接接力
+      // 手动词优先：用户已为这首歌指定歌词时，后台自动匹配结果不覆盖
+      if (manual && res && res.key === manual.key) return;
       if (res) emit(res);
     }).catch(() => { resolving = false; drain(); });
   }
@@ -414,9 +434,13 @@ function createLyricsService(onLines, cacheDir) {
     // noCache=true：跳过缓存读、强制重新在线取词并覆盖旧缓存（用户点“重新匹配”）；
     // 默认不跳：仍优先用本地缓存（跟随恢复/启动路径，保证断网也能秒出已缓存的词）
     forceRefresh(ev, noCache) {
+      manual = null;   // 用户主动重新匹配＝放弃手动词
       currentKey = null; pendingEv = null;
       handle(ev, noCache);
     },
+    // 用户手动指定歌词（搜索选版本/粘贴）；返回 {ok,count} 或 {ok:false,error}
+    setManual,
+    clearManual,
     // 在线歌词兜底开关
     setOnlineEnabled(v) { onlineEnabled = !!v; },
     parseLrc,

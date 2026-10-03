@@ -158,18 +158,27 @@
             </div>
           </div>
           <div class="pp-body pp-body-fill">
-            <div class="tab-body" data-body="search">
+            <div class="tab-body active" data-body="search">
               <div class="row">
                 <input id="searchInput" placeholder="歌名 / 歌手">
                 <button id="btnSearch">搜索</button>
               </div>
-              <div id="searchResults" class="results"><div class="hint">输入关键词搜索在线歌词</div></div>
+              <div id="searchResults" class="results"><div class="hint">输入关键词搜索在线歌词，点击任意版本即可查看并应用（可在「预览」中复制）</div></div>
             </div>
             <div class="tab-body hidden" data-body="paste">
-              <textarea id="pasteArea" placeholder="粘贴 LRC 歌词文本…"></textarea>
-              <div class="row"><button id="btnApplyPaste">应用</button><button id="btnPreview">预览效果</button></div>
+              <textarea id="pasteArea" placeholder="粘贴 LRC 歌词文本（带时间轴；跟随模式下纯文本也可，会按歌曲时长自动分配）…"></textarea>
+              <div class="row">
+                <button id="btnApplyPaste">应用到当前歌曲</button>
+                <button id="btnPreview">预览效果</button>
+              </div>
+              <div class="hint" style="padding:0 2px">跟随时手动歌词只对当前这首歌生效，切歌后自动恢复在线匹配；不满意可在「预览」里点「恢复自动匹配」。</div>
             </div>
             <div class="tab-body hidden" data-body="preview">
+              <div class="pv-toolbar">
+                <span id="pvSource" class="pv-source">未加载歌词</span>
+                <button id="btnCopyLrc" type="button" class="pv-tbtn">复制歌词</button>
+                <button id="btnAutoLrc" type="button" class="pv-tbtn ghost">恢复自动匹配</button>
+              </div>
               <div id="previewList"></div>
             </div>
           </div>

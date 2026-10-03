@@ -53,6 +53,7 @@
       openLrc: function () { return null; },
       searchLyrics: function () { return { error: '网页端不支持在线搜索，请在桌面端操作' }; },
       getLyrics: function () { return { error: '网页端不支持，请在桌面端操作' }; },
+      setManualLyrics: function () { return Promise.resolve({ ok: false, error: 'web-readonly' }); },
       openInBrowser: function () {},
       getServerUrl: function () { return Promise.resolve(location.origin); },
       // 网页为只读输出：配置由桌面总控广播而来，仅拉取/监听，不回写
@@ -100,6 +101,7 @@
       openLrc: function () { return api.openLrc(); },
       searchLyrics: function (kw) { return api.searchLyrics(kw); },
       getLyrics: function (id) { return api.getLyrics(id); },
+      setManualLyrics: function (text) { return api.setManualLyrics ? api.setManualLyrics(text) : Promise.resolve({ ok: false }); },
       openInBrowser: function () { if (api.openInBrowser) api.openInBrowser(); },
       getConfig: function () { return api.getConfig ? api.getConfig() : Promise.resolve({}); },
       setConfig: function (patch) { return api.setConfig ? api.setConfig(patch) : Promise.resolve(null); },

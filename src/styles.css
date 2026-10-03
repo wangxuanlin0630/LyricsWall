@@ -359,8 +359,10 @@ body.bg-custom #bgCustom { display: block; }
 }
 .tab-body button:hover { background: color-mix(in srgb, var(--accent) 32%, transparent); }
 .results { max-height: 30vh; overflow-y: auto; }
-.result-item { padding: 10px 12px; border-radius: 11px; cursor: pointer; transition: background .2s; }
+.result-item { padding: 10px 12px; border-radius: 11px; cursor: pointer; transition: background .2s; border-left: 3px solid transparent; }
 .result-item:hover { background: rgba(255,255,255,.07); }
+.result-item.picked { background: color-mix(in srgb, var(--accent) 14%, transparent); border-left-color: var(--accent); }
+.result-item.picked .t { color: #fff; }
 .result-item .t { font-size: 14px; font-weight: 600; }
 .result-item .s { font-size: 12px; color: var(--txt-faint); margin-top: 3px; }
 #pasteArea {
@@ -678,6 +680,33 @@ body.prev-mini #miniDragBar { display: flex; }
 .results { flex: 1; max-height: none; }
 #pasteArea { flex: 1; height: auto; min-height: 168px; }
 #previewList { min-height: 0; }
+
+/* 预览标签顶部工具条：来源 + 复制 + 恢复自动 */
+.pv-toolbar {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.07);
+  background: rgba(255,255,255,.025);
+}
+.pv-source {
+  flex: 1; min-width: 0; font-size: 12px; color: var(--txt-faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pv-tbtn {
+  flex: none; padding: 5px 12px !important; font-size: 12px !important; font-weight: 600;
+  border-radius: 8px !important; cursor: pointer;
+  background: color-mix(in srgb, var(--accent) 18%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent) !important;
+  color: #eaf6ff !important; transition: background .18s, border-color .18s, color .18s;
+}
+.pv-tbtn:hover { background: color-mix(in srgb, var(--accent) 30%, transparent) !important; }
+.pv-tbtn.ghost {
+  background: rgba(255,255,255,.07) !important;
+  border-color: rgba(255,255,255,.14) !important;
+  color: var(--txt-dim) !important;
+}
+.pv-tbtn.ghost:hover { background: rgba(255,255,255,.14) !important; color: #fff !important; }
+.pv-tbtn.ok-flash { background: color-mix(in srgb, #3fe08c 28%, transparent) !important; border-color: color-mix(in srgb, #3fe08c 45%, transparent) !important; color: #dfffe9 !important; }
+body.app-display .pv-tbtn, body.app-display .pv-toolbar { display: none; }
 
 /* ---------- 窄屏适配 ---------- */
 @media (max-width: 900px) {

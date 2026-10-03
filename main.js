@@ -552,6 +552,15 @@ ipcMain.on('lyrics:refresh', () => {
   try { lyricsService.forceRefresh(lastUnified, true); } catch (e) {}
 });
 
+// 用户手动指定歌词（搜索选定版本/粘贴 LRC）：绑定当前播放歌曲，主进程统一广播全端（桌面/网页/OBS 一份），
+// 自动匹配结果不再覆盖；切歌或点"重新匹配歌词"后自动恢复自动匹配
+ipcMain.handle('lyrics:setManual', (_e, text) => {
+  try {
+    if (!lastUnified || !lastUnified.ok) return { ok: false, error: 'no-playing' };
+    return lyricsService.setManual(lastUnified, String(text || ''));
+  } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+});
+
 // 网易云 seek 后手动对齐（渲染层点歌词行）：重设 nedb 锚点使进度跳到该句时间并继续跟随
 ipcMain.on('progress:realign', (_e, positionMs) => {
   try { playerManager.realignNetease(Number(positionMs) || 0); } catch (e) {}
