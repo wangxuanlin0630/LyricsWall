@@ -113,6 +113,9 @@
       winMinimize: function () { if (api.winMinimize) api.winMinimize(); },
       winMaximize: function () { if (api.winMaximize) api.winMaximize(); },
       winClose: function () { if (api.winClose) api.winClose(); },
+      openExternal: function (url) { if (api.openExternal) api.openExternal(url); },
+      checkUpdate: function () { return api.checkUpdate ? api.checkUpdate() : Promise.resolve({ ok: false }); },
+      onUpdateAvailable: function (cb) { if (api.onUpdateAvailable) api.onUpdateAvailable(cb); },
       getServerUrl: function () {
         if (api.getServerUrl) return api.getServerUrl();
         return Promise.resolve('');
