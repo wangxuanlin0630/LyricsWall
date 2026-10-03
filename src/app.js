@@ -100,10 +100,10 @@
   ];
   const EL_KEYS = ['el_cover', 'el_title', 'el_artist', 'el_progress', 'el_times', 'el_wave', 'el_lyric', 'el_wall', 'el_glow'];
   const CONFIG_SCHEMA = [
-    { group: '显示模式', icon: 'i-expand', items: [
+    { group: '显示模式', icon: 'i-layout', items: [
       { key: 'view', type: 'seg', label: '视图', desc: '卡片＝iOS 卡+居中歌词；漂浮墙＝碎片满屏；PV＝逐字撒开；歌综＝底部描边大字幕；3D方块＝长方体歌词块空间漂浮', options: [['card', '卡片'], ['wall', '漂浮墙'], ['pv', 'PV 字效'], ['show', '歌综字幕'], ['box', '3D方块']] },
     ] },
-    { group: '显示元素', icon: 'i-list', items: [
+    { group: '显示元素', icon: 'i-eye', items: [
       { key: 'el_cover', type: 'toggle', label: '封面', desc: '播放器封面图' },
       { key: 'el_title', type: 'toggle', label: '歌名', desc: '歌曲标题' },
       { key: 'el_artist', type: 'toggle', label: '歌手', desc: '歌手 / 作者' },
@@ -129,7 +129,7 @@
       { key: 'ft_lan', type: 'toggle', label: '局域网访问', desc: '允许手机/其他设备连接' },
       { key: 'ft_transparent', type: 'toggle', label: '透明背景(Alpha)', desc: '输出透明阿尔法通道（浏览器 / OBS）' },
     ] },
-    { group: '漂浮墙样式', icon: 'i-music', items: [
+    { group: '漂浮墙样式', icon: 'i-palette', items: [
       { key: 'st_font', type: 'range', label: '字号', min: 2, max: 12, step: 0.5 },
       { key: 'st_rotate', type: 'range', label: '旋转', min: 0, max: 45, step: 1 },
       { key: 'st_concurrent', type: 'range', label: '同屏数', min: 1, max: 12, step: 1 },
@@ -139,11 +139,11 @@
       { key: 'st_rainbow', type: 'toggle', label: '多彩', desc: '多色循环' },
       { key: 'st_glow', type: 'toggle', label: '发光', desc: '碎片发光' },
     ] },
-    { group: '字体', icon: 'i-file', items: [
+    { group: '字体', icon: 'i-type', items: [
       { key: 'ty_family', type: 'select', label: '字体', desc: '全局字体：预设或本机已安装字体（各模式共用）', options: FONT_OPTIONS, fontList: true },
       { key: 'ty_custom', type: 'text', label: '自定义字体', placeholder: 'font-family，如 "HarmonyOS Sans SC", sans-serif' },
     ] },
-    { group: '居中歌词', icon: 'i-list', items: [
+    { group: '居中歌词', icon: 'i-align-center', items: [
       { key: 'lc_size', type: 'range', label: '字号%', min: 60, max: 200, step: 5 },
       { key: 'lc_color', type: 'color', label: '颜色' },
       { key: 'lc_weight', type: 'range', label: '字重', min: 300, max: 900, step: 100 },
@@ -151,7 +151,7 @@
       { key: 'lc_shadow', type: 'toggle', label: '发光阴影', desc: '当前行外发光' },
       { key: 'lc_italic', type: 'toggle', label: '斜体' },
     ] },
-    { group: 'PV 字效', icon: 'i-expand', items: [
+    { group: 'PV 字效', icon: 'i-video', items: [
       { key: 'pv_template', type: 'select', label: 'PV 模板', desc: '日式 PV 字效模板（PixiJS WebGL 渲染）', options: PV_TEMPLATE_OPTIONS },
       { key: 'pv_speed', type: 'range', label: '动画速度%', desc: '50–300，100＝原速', min: 50, max: 300, step: 10 },
       { key: 'pv_size', type: 'range', label: '字号%', min: 60, max: 200, step: 5 },
@@ -163,7 +163,7 @@
       { key: 'pv_fx_scan', type: 'toggle', label: '扫描线' },
       { key: 'pv_fx_glitch', type: 'toggle', label: '故障抖动' },
     ] },
-    { group: '3D 长方体', icon: 'i-expand', items: [
+    { group: '3D 长方体', icon: 'i-cube', items: [
       { key: 'box_size', type: 'range', label: '字号%', desc: '文字与长方体整体大小', min: 50, max: 200, step: 5 },
       { key: 'box_spacing', type: 'range', label: '字间距', min: -2, max: 30, step: 1 },
       { key: 'box_color', type: 'color', label: '文字颜色', desc: '浅色板面上的字色，建议深色' },
@@ -178,7 +178,7 @@
       { key: 'box_rot', type: 'range', label: '随机旋转上限°', desc: '各轴 ±角度，默认 45（交叉构图）', min: 0, max: 90, step: 1 },
       { key: 'box_spin', type: 'range', label: '自转速度°/min', desc: '停留时缓慢自转，默认 15', min: 0, max: 60, step: 1 },
     ] },
-    { group: '歌综字幕', icon: 'i-music', items: [
+    { group: '歌综字幕', icon: 'i-subtitle', items: [
       { key: 'sh_anim', type: 'seg', label: '进出场动画', desc: '轮换＝每句自动换一种', options: [['rotate', '轮换'], ['fly', '飞入飞出'], ['fade', '淡入淡出'], ['pop', '弹入缩出'], ['slide', '滑入滑出']] },
       { key: 'sh_speed', type: 'range', label: '动画速度%', desc: '100＝原速，越大越快', min: 50, max: 200, step: 10 },
       { key: 'sh_size', type: 'range', label: '字号%', min: 60, max: 200, step: 5 },
