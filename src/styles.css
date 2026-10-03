@@ -324,9 +324,9 @@ body.bg-custom #bgCustom { display: block; }
 .pp-url:empty { display: none; }
 
 /* 显示面板内控制台分裂布局 */
-.display-split { display: flex; flex-direction: row; padding: 0; }
-.display-split .cs-nav { flex: none; width: 180px; padding: 10px 8px; border-right: 1px solid rgba(255,255,255,.06); background: rgba(9,12,20,.6); }
-.display-split .console-body { flex: 1; overflow-y: auto; padding: 10px 16px 20px; }
+.display-split { display: flex; flex-direction: row; padding: 0; min-height: 0; }
+.display-split .cs-nav { flex: none; width: 180px; padding: 10px 8px; border-right: 1px solid rgba(255,255,255,.06); background: rgba(9,12,20,.6); overflow-y: auto; min-height: 0; }
+.display-split .console-body { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 10px 16px 20px; }
 
 /* 旧面板兼容（歌词搜索/粘贴） */
 .panel {
@@ -673,7 +673,7 @@ body.prev-mini #miniDragBar { display: flex; }
 #miniDragBar.dragging { background: rgba(20,28,48,.82); }
 
 /* 歌词面板：panel-page → pp-body → tab-body → 列表，完整 flex 链保证长歌词可滚可点选 */
-.pp-body-fill { display: flex; flex-direction: column; min-height: 0; }
+.panel-page[data-page="lyrics"] .pp-body-fill { display: flex; flex-direction: column; min-height: 0; }
 .pp-body-fill .tab-body { min-height: 0; overflow: hidden; }
 .pp-body-fill .tab-body.active { flex: 1; }
 .pp-body-fill .tab-body > .row { flex: none; }
