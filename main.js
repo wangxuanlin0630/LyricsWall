@@ -285,7 +285,9 @@ function patchQQCover(ev) {
   const key = (ev.title || '') + '|' + (ev.artist || '');
   const cached = qqCoverCache.get(key);
   if (cached !== undefined) {
-    if (cached) { ev.cover = cached; rebroadcastNow(); }
+    // 同步贴回（调用方在广播前执行本函数）：本事件的正常广播即带封面。
+    // 绝不再 rebroadcast——否则 SMTC 每 tick 都会"无封面广播→有封面重广播"，封面闪烁。
+    if (cached) ev.cover = cached;
     return;
   }
   if (qqCoverPending === key) return;
@@ -310,13 +312,13 @@ const playerManager = createPlayerManager((ev) => {
   // 跟随总闸关闭：不更新快照、不向任何端广播（桌面与网页/OBS 一起停）
   if (!layoutConfig.ft_follow) return;
   lastUnified = ev;
+  try { patchQQCover(ev); } catch (e) {}   // 必须在广播前：命中缓存时同步贴回封面，单次广播即带封面
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('nowplaying', ev);
   }
   try { wallServer.broadcastState(ev); } catch (e) {}
   try { if (layoutConfig.ft_output) outputWriter.update(ev); } catch (e) {}
   try { lyricsService.handleEvent(ev); } catch (e) {}
-  try { patchQQCover(ev); } catch (e) {}
 }, {
   onKugouPortClosed: () => { try { tryAutoPatchKugou(); } catch (e) {} },
   onNeteasePortClosed: () => { try { tryAutoPatchNetease(); } catch (e) {} },
