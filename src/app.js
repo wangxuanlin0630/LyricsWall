@@ -69,6 +69,7 @@
     pv_template: 'cyberRuins', pv_speed: 100, pv_size: 100, pv_motion: 100,
     pv_bgalpha: 100, pv_bpm: 120, pv_beat: 50, pv_fx_grain: true, pv_fx_scan: true, pv_fx_glitch: false,
     sh_anim: 'rotate', sh_speed: 100, sh_size: 100, sh_color: '#ffffff', sh_outline: true, sh_outline_color: '#000000', sh_outline_w: 4,
+    sh_layout: 'h', sh_align: 'center',
     box_size: 100, box_spacing: 0, box_color: '#101826', box_glow_color: '#78b4ff', box_glow: 90,
     box_alpha: 85, box_max: 5, box_stay: 4, box_in: 1, box_out: 1.2, box_rot: 45, box_spin: 15, box_echo: 3,
     bg_mode: 'cover', bg_custom_v: 0,             // 背景：封面光晕/纯黑/预设渐变/自定义图
@@ -180,6 +181,8 @@
     ] },
     { group: '歌综字幕', icon: 'i-subtitle', items: [
       { key: 'sh_anim', type: 'seg', label: '进出场动画', desc: '轮换＝每句自动换一种', options: [['rotate', '轮换'], ['fly', '飞入飞出'], ['fade', '淡入淡出'], ['pop', '弹入缩出'], ['slide', '滑入滑出']] },
+      { key: 'sh_layout', type: 'seg', label: '排列方向', desc: '横向＝底部一排；竖向＝纵向一列（传统竖排字幕）', options: [['h', '横向'], ['v', '竖向']] },
+      { key: 'sh_align', type: 'seg', label: '对齐方式', desc: '横向时控制文字水平对齐；竖向时控制整列的屏幕位置', options: [['left', '左对齐'], ['center', '居中'], ['right', '右对齐']] },
       { key: 'sh_speed', type: 'range', label: '动画速度%', desc: '100＝原速，越大越快', min: 50, max: 200, step: 10 },
       { key: 'sh_size', type: 'range', label: '字号%', min: 60, max: 200, step: 5 },
       { key: 'sh_color', type: 'color', label: '字幕颜色' },
@@ -1259,6 +1262,8 @@
     // 歌综字幕专属样式
     document.body.classList.toggle('sh-rotate', (config.sh_anim || 'rotate') === 'rotate');
     document.body.classList.toggle('sh-no-outline', config.sh_outline === false);
+    document.body.classList.toggle('sh-vertical', config.sh_layout === 'v');
+    ['left', 'center', 'right'].forEach((a) => document.body.classList.toggle('sh-align-' + a, (config.sh_align || 'center') === a));
     rs.setProperty('--sh-speed', String((config.sh_speed || 100) / 100));
     rs.setProperty('--sh-size', String((config.sh_size || 100) / 100));
     rs.setProperty('--sh-color', config.sh_color || '#ffffff');
@@ -1771,8 +1776,20 @@
     }
     const c = document.createElement('div');
     c.className = 'show-cur in-' + fx;
-    c.textContent = cur;
+    c.textContent = cur.replace(/\n/g, ' ');
     el.showStage.appendChild(c);
+    // 强制一行下的自适应：实测渲染尺寸超出可用区域时等比缩小字号（横排按宽、竖排按高）
+    requestAnimationFrame(() => {
+      try {
+        const vert = document.body.classList.contains('sh-vertical');
+        const avail = (vert ? el.showStage.clientHeight * 0.84 : el.showStage.clientWidth * 0.92);
+        const cur = vert ? c.scrollHeight : c.scrollWidth;
+        if (cur > avail && cur > 0) {
+          const base = parseFloat(getComputedStyle(c).fontSize) || 30;
+          c.style.fontSize = (base * avail / cur).toFixed(1) + 'px';
+        }
+      } catch (e) {}
+    });
   }
 
   function fmtClock(sec) {
