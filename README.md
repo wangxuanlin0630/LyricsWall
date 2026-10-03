@@ -75,58 +75,91 @@
 
 ---
 
-## 三、酷狗零漂移补丁（全流程）
+## 三、酷狗零漂移补丁（小白全流程）
 
-**为什么要打**：酷狗不向系统上报实时进度，所以徽标是「估算同步」。补丁只修改酷狗安装目录里的一个文件 `libcef.dll`（9 处字节），打开酷狗内置的调试通道（端口 12233），软件即可直连酷狗读取它自己显示的进度——**零漂移，可随时一键还原**。补丁按指令特征定位，**不绑定酷狗版本号**，酷狗常规更新后重打一次即可；32 位版酷狗不支持（会明确提示）。
+> **这个补丁是干嘛的？** 一句话：酷狗不会把自己的播放进度告诉系统，所以歌词只能"猜"时间（中途打开、暂停过、拖动进度条都可能对不上）。打上补丁后，歌词软件可以直接问酷狗"现在唱到第几秒"，歌词就永远同步了。
+> 放心：补丁只改酷狗安装目录里一个文件的小地方，**不动酷狗任何功能**，备份自动做，随时可还原。
 
-### 方式一：安装版自带工具（推荐，无需装任何东西）
+以下以**安装版 LyricsWall** 为例（自带工具，什么都不用装）。全过程大约 2 分钟。
 
-1. **完全退出酷狗**（右下角托盘也要退出）
-2. 开始菜单搜索 **PowerShell** → 右键 → **以管理员身份运行**
-3. 粘贴执行（自定义过安装目录的把第一行改成实际目录）：
+---
+
+### 第 1 步：完全退出酷狗
+
+1. 看屏幕**右下角**时间附近，找到酷狗的小图标 → **右键** → 点「**退出**」
+2. 还是不放心？按 `Ctrl + Shift + Esc` 打开任务管理器，在列表里找到「酷狗音乐」→ 右键 →「结束任务」
+
+> ⚠️ 酷狗没退干净的话，后面会提示「检测到酷狗正在运行」，什么都打不上。
+
+### 第 2 步：打开"管理员 PowerShell"
+
+1. 点屏幕左下角的**开始按钮**（Win 键）
+2. 直接打字输入：`powershell`
+3. 在搜索结果「Windows PowerShell」上**点右键** → 选「**以管理员身份运行**」
+4. 弹出"是否允许此应用更改设备"→ 点「**是**」
+
+会打开一个蓝底（或黑底）的窗口，光标一闪一闪——这就是要输命令的地方。
+
+### 第 3 步：复制粘贴下面的命令
+
+用鼠标**全选下面三行 → Ctrl+C 复制**，然后**在 PowerShell 窗口里点一下右键**（右键就是粘贴）→ 按**回车**：
 
 ```powershell
 $dir = "$env:LOCALAPPDATA\Programs\LyricsWall"
 $env:ELECTRON_RUN_AS_NODE = "1"
-
-# 查看状态（只读）
-& "$dir\LyricsWall.exe" "$dir\resources\app.asar.unpacked\tools\patch-kugou.js" --status
-
-# 打补丁
 & "$dir\LyricsWall.exe" "$dir\resources\app.asar.unpacked\tools\patch-kugou.js"
 ```
 
-看到 `补丁写入并校验成功 ✔` 即完成。脚本会自动备份原文件、校验失败自动回滚。
+> 这三行的意思是"借用 LyricsWall 自带的补丁工具给酷狗打补丁"，**不需要看懂**，粘对就行。
 
-### 方式二：Node.js 方式（便携版用户 / 开发者）
+**看结果**，对照下表：
 
-安装 [Node.js LTS](https://nodejs.org/zh-cn) 后，在管理员 PowerShell 里：
+| 窗口里出现 | 说明 | 下一步 |
+| --- | --- | --- |
+| `补丁写入并校验成功 ✔` | 打好了 | 去第 4 步 |
+| `已打过补丁，跳过` | 之前打过，不用再打 | 去第 4 步 |
+| `无法将"…"项识别为…` 或找不到路径 | LyricsWall 没装在默认位置 | 看下面「装在别的盘怎么办」 |
+| `检测到酷狗正在运行` | 酷狗没退干净 | 回第 1 步 |
+| `拒绝写入` / 提到 `32位` / `特征` | 酷狗版本特殊，工具自动保护 | 见 [docs/kugou-patch.md](docs/kugou-patch.md) 常见问题 |
+
+**装在别的盘怎么办**（自定义过安装目录才会遇到）：
+
+1. 开始菜单找到 **LyricsWall** 图标 → 右键 →「打开文件位置」
+2. 在弹出的窗口里再右键 LyricsWall 快捷方式 →「打开文件所在位置」
+3. 复制地址栏上方的路径（比如 `D:\Soft\LyricsWall`）
+4. 把命令第一行换成：
+   ```powershell
+   $dir = "D:\Soft\LyricsWall"
+   ```
+   其余两行不变，重新粘贴执行。
+
+### 第 4 步：验证效果
+
+1. **打开酷狗**，随便播放一首歌（补丁在酷狗重启后才生效）
+2. 打开 LyricsWall，进入跟随模式
+3. 右上角徽标变成 **「● 精确同步（酷狗直连）」** = 大功告成，试试拖动酷狗的进度条，歌词会立刻跟上
+
+---
+
+### 想撤销？（还原补丁）
+
+同样先退出酷狗、打开管理员 PowerShell，粘贴这一段：
 
 ```powershell
-# 源码仓库用户
-cd LyricsWall
-node tools\patch-kugou.js
-
-# 或只下载单个脚本使用（见 docs/kugou-patch.md 内的下载链接）
-node patch-kugou.js
-```
-
-### 补丁后验证
-
-1. **启动酷狗**，播放任意歌曲
-2. 打开 LyricsWall 跟随模式 → 徽标变为 **「● 精确同步（酷狗直连）」**
-
-### 还原补丁
-
-```powershell
-# 安装版
+$dir = "$env:LOCALAPPDATA\Programs\LyricsWall"
+$env:ELECTRON_RUN_AS_NODE = "1"
 & "$dir\LyricsWall.exe" "$dir\resources\app.asar.unpacked\tools\patch-kugou.js" --restore
-
-# Node.js
-node tools\patch-kugou.js --restore
 ```
 
-更多细节（32 位判断、常见报错、找不到安装目录等）见 [docs/kugou-patch.md](docs/kugou-patch.md)。
+看到「已还原」即恢复原样。
+
+---
+
+### 其他情况
+
+- **便携版 LyricsWall 用户**：安装 [Node.js](https://nodejs.org/zh-cn) 后，下载补丁脚本执行即可，完整步骤见 [docs/kugou-patch.md](docs/kugou-patch.md)
+- **酷狗自动更新后**又变回「估算同步」：重复第 1~4 步重打一次（1 分钟）
+- 更多报错与原理说明：[docs/kugou-patch.md](docs/kugou-patch.md)
 
 ---
 
