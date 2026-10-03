@@ -112,6 +112,21 @@ $env:ELECTRON_RUN_AS_NODE = "1"
 
 > 这三行的意思是"借用 LyricsWall 自带的补丁工具给酷狗打补丁"，**不需要看懂**，粘对就行。
 
+**举个例子**，成功时窗口里大致长这样（你的路径会不一样，重点是最后两行）：
+
+```
+发现 1 个 libcef.dll：
+  [ORIGINAL] [x64] D:\KuGou\20.1.51.27967\libcef.dll
+
+目标: D:\KuGou\20.1.51.27967\libcef.dll
+  已备份原始 DLL -> D:\KuGou\20.1.51.27967\libcef.dll.dtgc.bak
+  => 补丁写入并校验成功 ✔ 端口将在酷狗下次启动时开启 (12233)。
+
+完成：成功 1 / 1。
+```
+
+`[ORIGINAL]` 表示"原始状态、可以打"；如果这里显示的是 `[PATCHED]`，窗口会写「已打过补丁，跳过」，同样不用管。
+
 **看结果**，对照下表：
 
 | 窗口里出现 | 说明 | 下一步 |
@@ -126,12 +141,16 @@ $env:ELECTRON_RUN_AS_NODE = "1"
 
 1. 开始菜单找到 **LyricsWall** 图标 → 右键 →「打开文件位置」
 2. 在弹出的窗口里再右键 LyricsWall 快捷方式 →「打开文件所在位置」
-3. 复制地址栏上方的路径（比如 `D:\Soft\LyricsWall`）
-4. 把命令第一行换成：
-   ```powershell
-   $dir = "D:\Soft\LyricsWall"
-   ```
-   其余两行不变，重新粘贴执行。
+3. 看窗口顶部的**地址栏**，复制里面的路径（比如 `D:\Soft\LyricsWall`）
+4. 把三行命令的第一行换成这个路径，变成下面这样再整块粘贴执行：
+
+```powershell
+$dir = "D:\Soft\LyricsWall"
+$env:ELECTRON_RUN_AS_NODE = "1"
+& "$dir\LyricsWall.exe" "$dir\resources\app.asar.unpacked\tools\patch-kugou.js"
+```
+
+（其余两行原样不动，只换第一行引号里的路径。）
 
 ### 第 4 步：验证效果
 
@@ -149,6 +168,12 @@ $env:ELECTRON_RUN_AS_NODE = "1"
 $dir = "$env:LOCALAPPDATA\Programs\LyricsWall"
 $env:ELECTRON_RUN_AS_NODE = "1"
 & "$dir\LyricsWall.exe" "$dir\resources\app.asar.unpacked\tools\patch-kugou.js" --restore
+```
+
+**举个例子**，成功时窗口里会有一行：
+
+```
+已还原: D:\KuGou\20.1.51.27967\libcef.dll
 ```
 
 看到「已还原」即恢复原样。
