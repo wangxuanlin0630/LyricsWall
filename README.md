@@ -31,6 +31,10 @@ npm install
 npm start
 ```
 
+### 酷狗精确同步（可选）
+
+跟随酷狗播放时若显示「● 估算同步」，按 [docs/kugou-patch.md](docs/kugou-patch.md) 一键打直连补丁，即可获得零漂移歌词同步（无需编程基础）。
+
 ## 打包发行
 
 ```bash
@@ -73,7 +77,7 @@ npm run selftest       # 自检
 ├─ server/              # HTTP/WS 服务与 nowplaying 输出
 ├─ web/overlay.html     # OBS 浏览器源叠加层
 ├─ tools/               # 探测/补丁/自检脚本
-└─ docs/screenshots/    # 模板效果截图
+└─ docs/                # 教程（酷狗直连补丁）与模板效果截图
 ```
 
 ## 技术栈
