@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, screen, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, screen, shell, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -309,6 +309,78 @@ function createWindow() {
   });
 }
 
+/* ------------------- 更新检查：启动后自动查一次，Gitee 优先、GitHub 兜底 ------------------- */
+const UPDATE_SOURCES = [
+  { api: 'https://gitee.com/api/v5/repos/miuiwang/LyricsWall/releases/latest', page: 'https://gitee.com/miuiwang/LyricsWall/releases' },
+  { api: 'https://api.github.com/repos/wangxuanlin0630/LyricsWall/releases/latest', page: 'https://github.com/wangxuanlin0630/LyricsWall/releases/latest' },
+];
+
+function cmpVer(a, b) {
+  const p = (s) => String(s).replace(/^v/i, '').split(/[.\-]/).map((n) => parseInt(n, 10) || 0);
+  const pa = p(a), pb = p(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0) ? 1 : -1;
+  }
+  return 0;
+}
+
+function fetchLatestRelease() {
+  const tryOne = (url) => new Promise((resolve, reject) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'LyricsWall-Updater' }, timeout: 8000 }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
+      let d = '';
+      res.on('data', (c) => (d += c));
+      res.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(e); } });
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+  });
+  return (async () => {
+    for (const src of UPDATE_SOURCES) {
+      try {
+        const data = await tryOne(src.api);
+        if (data && data.tag_name) return { version: String(data.tag_name).trim(), url: data.html_url || src.page };
+      } catch (e) { /* 网络失败换下一个源 */ }
+    }
+    return null;
+  })();
+}
+
+function checkAndNotifyUpdate() {
+  return fetchLatestRelease().then((info) => {
+    if (!info) return false;
+    const current = app.getVersion();
+    if (cmpVer(info.version, current) <= 0) return false;
+    try {
+      if (Notification.isSupported()) {
+        const n = new Notification({
+          title: 'LyricsWall 发现新版本',
+          body: `当前 v${current}，最新 ${info.version}。点击前往下载页。`,
+        });
+        n.on('click', () => { try { shell.openExternal(info.url); } catch (e) {} });
+        n.show();
+      }
+    } catch (e) {}
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update:available', { current: 'v' + current, latest: info.version, url: info.url });
+      }
+    } catch (e) {}
+    return true;
+  }).catch(() => false);
+}
+
+ipcMain.handle('update:check', async () => {
+  const info = await fetchLatestRelease();
+  if (!info) return { ok: false };
+  const current = app.getVersion();
+  return { ok: true, hasUpdate: cmpVer(info.version, current) > 0, latest: info.version, current: 'v' + current, url: info.url };
+});
+ipcMain.on('update:open', (_e, url) => {
+  const u = String(url || '');
+  if (/^https?:\/\//i.test(u)) { try { shell.openExternal(u); } catch (e) {} }
+});
+
 app.whenReady().then(() => {
   loadConfig();
   try { refreshFontFile().catch(() => {}); } catch (e) {}
@@ -319,6 +391,8 @@ app.whenReady().then(() => {
   wallServer.start().then((p) => { serverPort = p; }).catch(() => { serverPort = 0; });
   playerManager.start();
   try { playerManager.setPreferred(layoutConfig.ft_player || 'auto'); } catch (e) {}
+  // 启动 12 秒后检查更新（错开启动高峰，失败静默）
+  setTimeout(() => { try { checkAndNotifyUpdate(); } catch (e) {} }, 12000);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

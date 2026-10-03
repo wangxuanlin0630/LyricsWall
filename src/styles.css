@@ -628,6 +628,26 @@ body.idle #previewPanel { opacity: 0; pointer-events: none; transform: translate
 }
 .tb-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
 .tb-btn.close:hover { background: #e81123; color: #fff; }
+
+/* ---------------- 更新提示横幅（仅控制台开启时显示） ---------------- */
+#updateBanner {
+  display: none; position: fixed; top: 46px; left: 50%; transform: translateX(-50%);
+  z-index: 55; align-items: center; gap: 10px; padding: 8px 12px;
+  background: linear-gradient(90deg, #12303f, #0d2430); border: 1px solid rgba(46, 168, 255, .35);
+  border-radius: 10px; color: #d8ecff; font-size: 12px; letter-spacing: .04em;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .45);
+}
+body.app-console #updateBanner { display: flex; }
+#updateBanner.ub-hide { display: none !important; }
+#updateBanner .ub-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#updateBanner .ub-btns { display: flex; align-items: center; gap: 6px; flex: none; }
+#updateBanner .ub-go {
+  cursor: pointer; border: 1px solid rgba(46, 168, 255, .55); background: #123a52;
+  color: #cfeaff; font-size: 12px; padding: 3px 10px; border-radius: 6px;
+}
+#updateBanner .ub-go:hover { background: #1b5175; }
+#updateBanner .ub-x { cursor: pointer; border: 0; background: transparent; color: #7fa8c0; font-size: 12px; padding: 2px 4px; }
+#updateBanner .ub-x:hover { color: #fff; }
 .tb-btn .ico { width: 15px; height: 15px; stroke-width: 1.8; }
 /* 网页端不显示标题栏 */
 body:not(.electron) #titlebar { display: none; }

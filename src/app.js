@@ -27,6 +27,31 @@
     });
   }
 
+  /* ---------------- 更新提示：主进程发现新版本后推送横幅（控制台开启时可见） ---------------- */
+  (function () {
+    const eapi = window.electronAPI;
+    if (!eapi || !eapi.onUpdateAvailable) return;
+    let bar = null;
+    function show(d) {
+      try {
+        if (!bar) {
+          bar = document.createElement('div');
+          bar.id = 'updateBanner';
+          bar.innerHTML = '<span class="ub-text"></span><span class="ub-btns">' +
+            '<button class="ub-go" type="button">去下载</button>' +
+            '<button class="ub-x" type="button" title="关闭提示">✕</button></span>';
+          document.body.appendChild(bar);
+          bar.querySelector('.ub-go').onclick = () => { try { eapi.openExternal(bar.dataset.url); } catch (e) {} };
+          bar.querySelector('.ub-x').onclick = () => bar.classList.add('ub-hide');
+        }
+        bar.dataset.url = d.url || '';
+        bar.querySelector('.ub-text').textContent = '发现新版本 ' + d.latest + '（当前 ' + d.current + '）';
+        bar.classList.remove('ub-hide');
+      } catch (e) {}
+    }
+    eapi.onUpdateAvailable(show);
+  })();
+
   const RAINBOW = ['#ffffff', '#7fd4ff', '#ff9ecb', '#ffe28a', '#a0ffb0', '#c9a6ff'];
 
   /* ---------------- 配置（与 main.js DEFAULT_CONFIG 对齐）：所有元素/功能可开关 ---------------- */
