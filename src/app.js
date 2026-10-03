@@ -87,6 +87,40 @@
     eapi.onKugouPatchStatus((d) => show((d && d.stage) || '', (d && d.detail) || ''));
   })();
 
+  /* ---------------- 网易云接入提示：自动重启带调试参数的进度横幅 ---------------- */
+  (function () {
+    const eapi = window.electronAPI;
+    if (!eapi || !eapi.onNeteasePatchStatus) return;
+    let bar = null;
+    let hideTimer = null;
+    const TEXTS = {
+      checking: '检测到网易云未开调试端口，正在检查…',
+      restarting: '网易云正在重启以启用调试端口…',
+      relaunch: '正在重启网易云…',
+      done: '网易云接入完成',
+    };
+    function show(stage, detail) {
+      try {
+        if (!bar) {
+          bar = document.createElement('div');
+          bar.id = 'neteasePatchBanner';
+          bar.innerHTML = '<span class="ub-text"></span><span class="ub-btns">' +
+            '<button class="ub-x" type="button" title="关闭提示">✕</button></span>';
+          document.body.appendChild(bar);
+          bar.querySelector('.ub-x').onclick = () => bar.classList.add('ub-hide');
+        }
+        const text = stage === 'failed'
+          ? '网易云接入失败：' + (detail || '未知原因')
+          : (TEXTS[stage] || '网易云接入中…');
+        bar.querySelector('.ub-text').textContent = text;
+        bar.classList.remove('ub-hide');
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        if (stage === 'done') hideTimer = setTimeout(() => bar.classList.add('ub-hide'), 6000);
+      } catch (e) {}
+    }
+    eapi.onNeteasePatchStatus((d) => show((d && d.stage) || '', (d && d.detail) || ''));
+  })();
+
   const RAINBOW = ['#ffffff', '#7fd4ff', '#ff9ecb', '#ffe28a', '#a0ffb0', '#c9a6ff'];
 
   /* ---------------- 配置（与 main.js DEFAULT_CONFIG 对齐）：所有元素/功能可开关 ---------------- */
@@ -868,7 +902,7 @@
     } else {
       el.syncStatus.textContent = '● 估算同步';
       el.syncStatus.className = 'badge warn';
-      el.syncHint.textContent = '当前播放器未上报实时进度，拖动进度条后可能错位。若为酷狗，可用 tools/patch-kugou.js 开启直连获得零漂移。';
+      el.syncHint.textContent = '当前播放器未上报实时进度，拖动进度条后可能错位。若为酷狗/网易云，重启播放器后将自动开启精确同步。';
       el.syncHint.classList.add('show');
     }
   }

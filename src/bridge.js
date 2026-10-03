@@ -118,6 +118,7 @@
       openExternal: function (url) { if (api.openExternal) api.openExternal(url); },
       checkUpdate: function () { return api.checkUpdate ? api.checkUpdate() : Promise.resolve({ ok: false }); },
       onUpdateAvailable: function (cb) { if (api.onUpdateAvailable) api.onUpdateAvailable(cb); },
+      onNeteasePatchStatus: function (cb) { if (api.onNeteasePatchStatus) api.onNeteasePatchStatus(cb); },
       getServerUrl: function () {
         if (api.getServerUrl) return api.getServerUrl();
         return Promise.resolve('');

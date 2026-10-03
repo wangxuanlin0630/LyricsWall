@@ -9,6 +9,7 @@ const { createLyricsService } = require('./lyrics-service');
 const { createWallServer } = require('./server/http-server');
 const { createOutputWriter } = require('./server/output-writer');
 const kugouPatcher = require('./players/kugou-patcher');
+const neteasePatch = require('./players/netease-patch');
 
 let mainWindow = null;
 let followActive = false;
@@ -268,7 +269,40 @@ const playerManager = createPlayerManager((ev) => {
   try { wallServer.broadcastState(ev); } catch (e) {}
   try { if (layoutConfig.ft_output) outputWriter.update(ev); } catch (e) {}
   try { lyricsService.handleEvent(ev); } catch (e) {}
-}, { onKugouPortClosed: () => { try { tryAutoPatchKugou(); } catch (e) {} } });
+}, {
+  onKugouPortClosed: () => { try { tryAutoPatchKugou(); } catch (e) {} },
+  onNeteasePortClosed: () => { try { tryAutoPatchNetease(); } catch (e) {} },
+});
+
+/* ------------------- 网易云自动接入守卫：网易云在跑但 9222 没开 → 重启带调试参数 -------------------
+ * 与酷狗补丁不同：网易云只需启动参数，无需提权、无需改文件；
+ * 但会打断用户当前播放，故仅在网易云正在运行时触发一次，且提前发通知。 */
+let neteasePatchTried = false;
+function neteasePatchStatus(stage, detail) {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('netease:patch-status', { stage, detail: detail || '' });
+    }
+  } catch (e) {}
+}
+async function tryAutoPatchNetease() {
+  if (neteasePatchTried) return;
+  try {
+    if (!(await neteasePatch.isNeteaseRunning())) return;
+    neteasePatchTried = true;
+    neteasePatchStatus('checking');
+    const r = await neteasePatch.ensureDebugMode({ onStatus: neteasePatchStatus });
+    if (r.ok) {
+      if (r.restarted) neteasePatchStatus('done');
+    } else if (r.reason === 'not-running') {
+      // 网易云没跑，静默
+    } else if (r.reason === 'unsupported-version') {
+      neteasePatchStatus('failed', '网易云 v' + (r.version || '?') + ' 不支持（需 v3+）');
+    } else {
+      neteasePatchStatus('failed', r.reason || '未知原因');
+    }
+  } catch (e) { /* 绝不影响主流程 */ }
+}
 
 /* ------------------- 酷狗自动接入守卫：酷狗在跑但 CDP 端口没开 → 多半是 libcef.dll 未打补丁 -------------------
  * 触发一次提权修补（UAC 弹窗无法避免），全程 try/catch 绝不影响主流程；

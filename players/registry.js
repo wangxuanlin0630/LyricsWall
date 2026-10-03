@@ -15,6 +15,8 @@
 const { createSmtcAdapter } = require('./smtc');
 const { createKugouCdpAdapter } = require('./kugou-cdp');
 const { createNeteaseDbAdapter } = require('./netease-db');
+const { createNeteaseCdpAdapter } = require('./netease-cdp');
+const neteasePatch = require('./netease-patch');
 
 // SourceAppUserModelId / 进程名 关键词 → 播放器 id
 const SOURCE_PATTERNS = [
@@ -58,6 +60,7 @@ function createPlayerManager(onUnified, opts) {
   let smtc = null;
   let cdp = null;
   let nedb = null;       // 网易云进度适配器（读本地库补偿 SMTC 无时间轴）
+  let ncdp = null;       // 网易云 CDP 适配器（优先于 nedb，seek 自动感知）
   let running = false;
   let preferred = 'auto';   // 'auto' 或具体 playerId：锁定只认该播放器，它没在放则输出无播放（不回退）
   let lastNedbKey = '';  // 网易云上次 歌名|歌手，用于切歌即时重扫锚定
@@ -66,9 +69,12 @@ function createPlayerManager(onUnified, opts) {
   let lastCdp = null;    // 最近一次 cdp 归一化事件
   let lastCdpOkAt = 0;   // cdp 最近一次 ok 的时刻
   let lastSmtcOkAt = 0;
+  let lastNcdp = null;   // 最近一次网易云 cdp 事件
+  let lastNcdpOkAt = 0;
 
   const CDP_FRESH_MS = 3000;   // cdp 数据新鲜度窗口
   const SMTC_FRESH_MS = 3000;
+  const NCDP_FRESH_MS = 3000;
 
   /* ---- 停滞检测（对齐 PlayerCap 的 time-stall 判据）----
    * 场景：播放器实际已暂停/卡住，但状态通道未上报（如 QQ 音乐 SMTC 偶发冻结）。
@@ -93,26 +99,42 @@ function createPlayerManager(onUnified, opts) {
 
   function emit(ev) { if (onUnified) { try { onUnified(ev); } catch (e) {} } }
 
-  // 网易云：SMTC 只给 歌名/状态、时间轴恒 0；用 nedb 读到的真实起点算出精确进度覆盖上去，
-  // 并带上精确歌曲 id(nid) 供歌词按 id 取官方逐行词。nedb 无数据时保持原 SMTC 事件（上层回退墙钟）。
+  // 网易云：SMTC 只给 歌名/状态、时间轴恒 0；用 CDP/nedb 读到的真实起点算出精确进度覆盖上去，
+  // 并带上精确歌曲 id(nid) 供歌词按 id 取官方逐行词。CDP 不可用时回退 nedb；都无则保持原 SMTC 事件（上层回退墙钟）。
   function applyNeteaseProgress(ev) {
     if (!ev || !ev.ok) return ev;
     const pid = ev.playerId || mapSourceId(ev.sourceId);
     if (pid !== 'netease') return ev;
-    let p = null;
-    try { p = nedb.getProgress(); } catch (e) {}
-    if (p && p.ok && p.positionMs >= 0) {
+    const np = getNeteaseProgress();
+    if (np.ok) {
+      const p = np.data;
       ev.positionMs = p.positionMs;
       if (p.durationMs > 0) ev.durationMs = p.durationMs;
       ev.updatedMs = Date.now();   // 让上层 hasPos() 成立、按真实进度插值（暂停时不插值，天然冻结）
-      ev.nid = String(p.id);       // 网易云歌曲 id：精确取词
-      ev.progress = 'netease-db';  // 进度来源标记（仅诊断用）
+      if (p.nid) ev.nid = String(p.nid);
+      else if (p.id) ev.nid = String(p.id);
+      ev.progress = np.source === 'cdp' ? 'netease-cdp' : 'netease-db';
     }
     return ev;
   }
 
   function cdpFresh() { return lastCdp && lastCdp.ok && (Date.now() - lastCdpOkAt) < CDP_FRESH_MS; }
   function smtcFresh() { return lastSmtc && lastSmtc.ok && (Date.now() - lastSmtcOkAt) < SMTC_FRESH_MS; }
+  function ncdpFresh() { return lastNcdp && lastNcdp.ok && (Date.now() - lastNcdpOkAt) < NCDP_FRESH_MS; }
+
+  // 网易云进度来源选择：CDP 直连 > nedb 锚点 > SMTC 原始（无时间轴）
+  function getNeteaseProgress() {
+    if (ncdpFresh()) {
+      return { ok: true, source: 'cdp', data: lastNcdp };
+    }
+    try {
+      const p = nedb.getProgress();
+      if (p && p.ok && p.positionMs >= 0) {
+        return { ok: true, source: 'nedb', data: p };
+      }
+    } catch (e) {}
+    return { ok: false };
+  }
 
   function recompute() {
     // 决定当前播放器 id：优先 smtc 的 sourceId；smtc 无会话时用 cdp（酷狗）
@@ -177,6 +199,11 @@ function createPlayerManager(onUnified, opts) {
     else { lastCdp = ev; }
     recompute();
   }, { onPortClosed: (opts && opts.onKugouPortClosed) || null });
+  ncdp = createNeteaseCdpAdapter((ev) => {
+    if (ev.ok) { lastNcdp = ev; lastNcdpOkAt = Date.now(); }
+    else { lastNcdp = ev; }
+    recompute();
+  }, { onPortClosed: (opts && opts.onNeteasePortClosed) || null });
 
   return {
     start() {
@@ -185,13 +212,16 @@ function createPlayerManager(onUnified, opts) {
       smtc.start();
       cdp.start();
       try { nedb.start(); } catch (e) {}
+      try { ncdp.start(); } catch (e) {}
     },
     stop() {
       running = false;
       smtc.stop();
       cdp.stop();
       try { nedb.stop(); } catch (e) {}
+      try { ncdp.stop(); } catch (e) {}
       lastSmtc = null; lastCdp = null; lastCdpOkAt = 0; lastSmtcOkAt = 0;
+      lastNcdp = null; lastNcdpOkAt = 0;
     },
     // 供服务器/歌词服务主动查询当前快照
     snapshot() {
@@ -222,6 +252,13 @@ function createPlayerManager(onUnified, opts) {
       try { (smtc.getActiveSourceIds() || []).forEach((sid) => { const p = mapSourceId(sid); if (p !== 'unknown') set.add(p); }); } catch (e) {}
       if (cdpFresh()) set.add('kugou');
       return Array.from(set);
+    },
+    // 网易云 CDP 状态查询（供 UI 显示当前接入状态）
+    getNeteaseCdpState() {
+      return {
+        connected: ncdpFresh(),
+        hasData: !!(lastNcdp && lastNcdp.ok),
+      };
     },
     // 网易云 seek 后手动对齐：转发给 nedb 重设锚点，并立即用新锚点重算广播（无需等下一轮 500ms）
     realignNetease(positionMs) {
