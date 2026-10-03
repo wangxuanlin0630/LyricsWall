@@ -627,7 +627,7 @@
     if (hasPos()) {
       let ms = follow.positionMs;
       if (follow.status === 'playing' && follow.updatedMs) {
-        ms += Math.max(0, Date.now() - follow.updatedMs) * (follow.rate || 1);
+        ms += Math.max(0, Date.now() - follow.updatedMs) * (follow.rate == null ? 1 : follow.rate);
       }
       return ms / 1000;
     }
@@ -717,7 +717,7 @@
       follow.positionMs = d.positionMs || 0;
       follow.durationMs = d.durationMs || 0;
       follow.updatedMs = d.updatedMs || 0;
-      follow.rate = d.rate > 0 ? d.rate : 1;
+      follow.rate = (typeof d.rate === 'number' && d.rate >= 0) ? d.rate : 1; // rate=0 表示停滞冻结，必须保留
       follow.cover = d.cover || '';
       follow.title = d.title || '';
       follow.artist = d.artist || '';

@@ -70,6 +70,27 @@ function createPlayerManager(onUnified, opts) {
   const CDP_FRESH_MS = 3000;   // cdp 数据新鲜度窗口
   const SMTC_FRESH_MS = 3000;
 
+  /* ---- 停滞检测（对齐 PlayerCap 的 time-stall 判据）----
+   * 场景：播放器实际已暂停/卡住，但状态通道未上报（如 QQ 音乐 SMTC 偶发冻结）。
+   * 判据：status=playing 且有进度轴，但 positionMs/updatedMs 连续 STALL_MS 未前进
+   * → 把 rate 置 0 冻结下游插值，避免歌词按墙钟越走越偏；进度恢复前进自动解除。 */
+  const STALL_MS = 2500;
+  const stall = { lastPos: -1, lastUpd: -1, lastAdvanceAt: 0, on: false };
+  let stallKey = '';
+  function stallCheck(ev) {
+    const key = (ev.playerId || '') + '|' + (ev.title || '') + '|' + (ev.artist || '');
+    if (key !== stallKey) { stallKey = key; stall.lastPos = -1; stall.lastUpd = -1; stall.on = false; }
+    if (ev.status !== 'playing' || !(ev.durationMs > 0) || !ev.updatedMs) { stall.on = false; return; }
+    const pos = Number(ev.positionMs || 0), upd = Number(ev.updatedMs || 0);
+    const now = Date.now();
+    if (pos !== stall.lastPos || upd !== stall.lastUpd) {
+      stall.lastPos = pos; stall.lastUpd = upd; stall.lastAdvanceAt = now; stall.on = false;
+      return;
+    }
+    if (!stall.on && now - stall.lastAdvanceAt > STALL_MS) stall.on = true;
+    if (stall.on) { ev.rate = 0; ev.stalled = true; }
+  }
+
   function emit(ev) { if (onUnified) { try { onUnified(ev); } catch (e) {} } }
 
   // 网易云：SMTC 只给 歌名/状态、时间轴恒 0；用 nedb 读到的真实起点算出精确进度覆盖上去，
@@ -133,6 +154,7 @@ function createPlayerManager(onUnified, opts) {
     ev.playerId = ev.playerId || mapSourceId(ev.sourceId);
     ev.ts = Date.now();
     applyNeteaseProgress(ev);
+    stallCheck(ev);
     emit(ev);
   }
 
