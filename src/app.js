@@ -972,6 +972,7 @@
 
   document.querySelectorAll('.close').forEach((b) => {
     if (b.id === 'btnCsClose') return;              // 控制台关闭钮走三态切换，不用通用 hidden
+    if (b.id === 'tbClose') return;                 // 标题栏关闭钮 = 关窗口（winClose），绝不能被这里覆盖
     b.onclick = () => { if (b.dataset.close) document.getElementById(b.dataset.close).classList.add('hidden'); };
   });
   document.querySelectorAll('.tab').forEach((tab) => {
