@@ -17,6 +17,61 @@ function decodeKrc(buf) {
   return zlib.inflateSync(out).toString('utf-8').replace(/\0+$/g, '');
 }
 
+/* 从 KRC 头部 [language:] 标签解出内嵌语言轨（base64 JSON）：
+ *   {"content":[{"lyricContent":[["译文行"],...],"type":1},   // type=1 翻译
+ *               {"lyricContent":[["ro","ma"],...],"type":0}], // type=0 逐字音译
+ *    "version":1}
+ * lyricContent[i] 对应第 i 个 [start,dur] 行（含空词被跳过的行），按行号位置对齐，本身无时间戳。
+ * 移植自 PlayerCap player/krc/krc.go parseLanguageTrack。
+ */
+const LANG_TAG_RE = /\[language:([A-Za-z0-9+/=]+)\]/;
+function parseLanguageTrack(text, wantType) {
+  const m = LANG_TAG_RE.exec(String(text || ''));
+  if (!m) return null;
+  let doc;
+  try { doc = JSON.parse(Buffer.from(m[1], 'base64').toString('utf-8')); } catch (e) { return null; }
+  const blk = ((doc || {}).content || []).find((b) => b && b.type === wantType);
+  if (!blk || !Array.isArray(blk.lyricContent)) return null;
+  return blk.lyricContent.map((frags) => String((frags || []).join('')).trim());
+}
+
+/* KRC 文本 → 结构化歌词行（含翻译/音译副行）
+ * 行号对齐口径：rowIdx 数每一个 [start,dur] 行（含被跳过的空词行），与 lyricContent 下标一一对应。
+ * 返回 { lines:[{time(秒), text, sub(翻译), roma(音译), duration}], title, artist }
+ */
+function krcToLines(text) {
+  const rows = String(text || '').split(/\r\n|\n|\r/);
+  const trans = parseLanguageTrack(text, 1);
+  const roma = parseLanguageTrack(text, 0);
+  const lines = [];
+  let title = '';
+  let artist = '';
+  let rowIdx = 0;
+  for (const raw of rows) {
+    const line = raw.trim();
+    if (!line) continue;
+    let m;
+    if ((m = line.match(/^\[ti:(.*)\]$/i))) { title = m[1].trim(); continue; }
+    if ((m = line.match(/^\[ar:(.*)\]$/i))) { artist = m[1].trim(); continue; }
+    m = line.match(/^\[(\d+),(\d+)\](.*)$/);
+    if (!m) continue;
+    const myIdx = rowIdx++;
+    const startMs = parseInt(m[1], 10);
+    const t = m[3].replace(/<[^>]*>/g, '').trim();
+    if (!t) continue;   // 空词行不占输出行，但已消耗一个对齐下标
+    lines.push({
+      time: startMs / 1000,
+      text: t,
+      sub: (trans && trans[myIdx]) || '',
+      roma: (roma && roma[myIdx]) || '',
+    });
+  }
+  for (let i = 0; i < lines.length; i++) {
+    lines[i].duration = i + 1 < lines.length ? Math.max(0.5, lines[i + 1].time - lines[i].time) : 4;
+  }
+  return { lines, title, artist };
+}
+
 // 把 KRC 文本转成标准 LRC（去掉逐字标签），并提取标题/歌手
 function krcToLrc(text) {
   const rows = String(text || '').split(/\r\n|\n|\r/);
@@ -135,7 +190,8 @@ function findKugouLyrics(title, artist) {
       if (lrc && lrc.trim()) {
         // 二次校验：解码出的内部标题须与请求歌名足够相似，避免文件名子串误配到另一首歌
         if (similarity(t2 || title, title) < 0.45) continue;
-        return { text: lrc, title: t2 || title, artist: a2 || artist, file: f };
+        const structured = krcToLines(text);
+        return { text: lrc, title: t2 || title, artist: a2 || artist, file: f, lines: structured.lines };
       }
     } catch (e) {
       // 解码失败则继续找下一个候选
@@ -168,7 +224,8 @@ function findKugouLyricsByHash(hash) {
       const text = decodeKrc(fs.readFileSync(fp));
       const { lrc, title, artist } = krcToLrc(text);
       if (lrc && lrc.trim()) {
-        return { text: lrc, title, artist, file: f };
+        const structured = krcToLines(text);
+        return { text: lrc, title, artist, file: f, lines: structured.lines };
       }
     } catch (e) {
       // 解码失败则继续下一个候选
@@ -177,4 +234,4 @@ function findKugouLyricsByHash(hash) {
   return null;
 }
 
-module.exports = { decodeKrc, krcToLrc, getKugouLyricDir, findKugouLyrics, findKugouLyricsByHash, norm, similarity };
+module.exports = { decodeKrc, krcToLrc, krcToLines, parseLanguageTrack, getKugouLyricDir, findKugouLyrics, findKugouLyricsByHash, norm, similarity };

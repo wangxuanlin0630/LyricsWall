@@ -50,6 +50,7 @@ const DEFAULT_CONFIG = {
   st_color: '#ffffff', st_rainbow: true, st_glow: true,
   ty_family: 'system', ty_custom: '', ty_font_v: 0,
   lc_size: 100, lc_color: '#ffffff', lc_weight: 800, lc_spacing: 0, lc_shadow: true, lc_italic: false,
+  lc_sub: true, lc_sub_size: 55,                    // 副行（翻译/音译）：开关 + 相对主行字号%
   pv_template: 'cyberRuins', pv_speed: 100, pv_size: 100, pv_motion: 100,
   pv_bgalpha: 100, pv_bpm: 120, pv_beat: 50, pv_fx_grain: true, pv_fx_scan: true, pv_fx_glitch: false,
   sh_anim: 'rotate', sh_speed: 100, sh_size: 100, sh_color: '#ffffff', sh_outline: true, sh_outline_color: '#000000', sh_outline_w: 4,

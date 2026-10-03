@@ -87,6 +87,23 @@ function httpGetJson(url, headers, netOpts) {
   });
 }
 
+/* ---------------- 翻译/音译轨合并（对齐 PlayerCap） ----------------
+ * 网易云：tlyric/romalrc 是独立 LRC，按毫秒时间戳就近匹配主行 → line.sub / line.roma。
+ * 酷狗 KRC：内嵌 [language:] 轨已在 krc.krcToLines 按行号对齐，此处无需再合。
+ * QQ：trans 字段是独立 LRC，按毫秒时间戳就近匹配 → line.sub。
+ */
+function mergeTrackByTime(lines, trackLrc, field) {
+  if (!trackLrc || !lines || !lines.length) return;
+  const tLines = parseLrc(trackLrc);
+  if (!tLines.length) return;
+  const tmap = new Map();
+  for (const tl of tLines) tmap.set(Math.round(tl.time * 1000), tl.text);
+  for (const ln of lines) {
+    const t = tmap.get(Math.round(ln.time * 1000));
+    if (t) ln[field] = t;
+  }
+}
+
 async function onlineSearch(keyword) {
   const url = 'https://music.163.com/api/search/get/web?s=' + encodeURIComponent(keyword) + '&type=1&limit=5&offset=0';
   const json = await httpGetJson(url);
@@ -96,6 +113,16 @@ async function onlineLyric(id) {
   const url = 'https://music.163.com/api/song/lyric?id=' + id + '&lv=1&kv=1&tv=-1';
   const json = await httpGetJson(url);
   return ((json || {}).lrc || {}).lyric || '';
+}
+// 网易云完整歌词（含翻译/音译轨）：用 lyric/v1 接口一次拿全
+async function onlineLyricFull(id) {
+  const url = 'https://music.163.com/api/song/lyric/v1?id=' + id + '&cp=false&tv=0&lv=0&rv=0&kv=0&yv=0&ytv=0&yrv=0';
+  const json = await httpGetJson(url);
+  return {
+    lrc: ((json || {}).lrc || {}).lyric || '',
+    tlyric: ((json || {}).tlyric || {}).lyric || '',
+    romalrc: ((json || {}).romalrc || {}).lyric || '',
+  };
 }
 
 // 在线择优：歌名为主、歌手仅用于加分。
@@ -142,12 +169,17 @@ async function pickOnlineSong(title, artist, durationMs) {
     .sort((a, b) => b.score - a.score);
   let untimed = null;   // 兜底：确有歌词文本但无时间轴的最高分候选
   for (const cand of ranked.slice(0, 5)) {
-    let lrcText;
-    try { lrcText = await onlineLyric(cand.s.id); } catch (e) { continue; }
+    let full;
+    try { full = await onlineLyricFull(cand.s.id); } catch (e) { continue; }
+    const lrcText = full.lrc;
     if (!lrcText) continue;
     const meta = { title: cand.s.name || title, artist: (cand.s.artists || []).map((a) => a.name).join('/') || artist };
     const lines = parseLrc(lrcText);
-    if (lines.length) return { lines, title: meta.title, artist: meta.artist };
+    if (lines.length) {
+      mergeTrackByTime(lines, full.tlyric, 'sub');
+      mergeTrackByTime(lines, full.romalrc, 'roma');
+      return { lines, title: meta.title, artist: meta.artist };
+    }
     // 无时间轴但有文本：记首个（即最高分）作为估算兜底
     if (!untimed) untimed = { text: lrcText, score: cand.score, title: meta.title, artist: meta.artist };
   }
@@ -180,7 +212,10 @@ async function qqLyric(songmid) {
   const url = 'https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=' + songmid +
     '&format=json&nobase64=1&g_tk=5381&loginUin=0&hostUin=0&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq&needNewCode=0';
   const json = await httpGetJson(url, Object.assign({}, QQ_HEADERS, { Referer: 'https://y.qq.com/portal/player.html' }), QQ_NET);
-  return (json || {}).lyric || '';   // nobase64=1 → 明文 LRC
+  return {
+    lyric: (json || {}).lyric || '',   // nobase64=1 → 明文 LRC
+    trans: (json || {}).trans || '',   // 翻译轨（同样是 LRC 格式）
+  };
 }
 
 // QQ 官方源择优：信任 QQ 搜索的相关性排序，再用 歌名/歌手相似 + 时长锁定版本 二次打分。
@@ -228,12 +263,16 @@ async function pickQQSong(title, artist, durationMs) {
     .sort((a, b) => b.score - a.score);
   let untimed = null;
   for (const cand of ranked.slice(0, 5)) {
-    let text;
-    try { text = await qqLyric(cand.s.songmid); } catch (e) { continue; }
-    if (!text) continue;
+    let lyr;
+    try { lyr = await qqLyric(cand.s.songmid); } catch (e) { continue; }
+    if (!lyr || !lyr.lyric) continue;
+    const text = lyr.lyric;
     const meta = { title: cand.s.songname || title, artist: (cand.s.singer || []).map((a) => a.name).join('/') || artist };
     const lines = parseLrc(text);
-    if (lines.length) return { lines, title: meta.title, artist: meta.artist };
+    if (lines.length) {
+      mergeTrackByTime(lines, lyr.trans, 'sub');
+      return { lines, title: meta.title, artist: meta.artist };
+    }
     if (!untimed) untimed = { text, score: cand.score, title: meta.title, artist: meta.artist };
   }
   if (untimed) return { untimedText: untimed.text, score: untimed.score, title: untimed.title, artist: untimed.artist };
@@ -369,11 +408,15 @@ function createLyricsService(onLines, cacheDir) {
     // 0) 网易云精确 id：直接取官方逐行词（最准，规避同名不同版/翻唱；时间轴天然与网易云对齐）
     if (nid && onlineEnabled) {
       try {
-        const text = await onlineLyric(nid);
-        if (text) {
-          const lines = parseLrc(text);
-          if (lines.length) return { key, title, artist, source: 'online', lines };
-          const synth = synthesizeTimeline(text, Number(ev.durationMs) || 0);   // 纯文本词：按精确时长合成
+        const full = await onlineLyricFull(nid);
+        if (full.lrc) {
+          const lines = parseLrc(full.lrc);
+          if (lines.length) {
+            mergeTrackByTime(lines, full.tlyric, 'sub');
+            mergeTrackByTime(lines, full.romalrc, 'roma');
+            return { key, title, artist, source: 'online', lines };
+          }
+          const synth = synthesizeTimeline(full.lrc, Number(ev.durationMs) || 0);
           if (synth.length) return { key, title, artist, source: 'online', lines: synth };
         }
       } catch (e) {}
@@ -382,14 +425,14 @@ function createLyricsService(onLines, cacheDir) {
     if (hash) {
       try {
         const r = krc.findKugouLyricsByHash(hash);
-        if (r && r.text) return { key, title: r.title || title, artist: r.artist || artist, source: 'kugou-hash', lines: parseLrc(r.text) };
+        if (r && r.lines && r.lines.length) return { key, title: r.title || title, artist: r.artist || artist, source: 'kugou-hash', lines: r.lines };
       } catch (e) {}
     }
     // 2) 本地 krc 歌名/歌手
     if (title) {
       try {
         const r = krc.findKugouLyrics(title, artist);
-        if (r && r.text) return { key, title: r.title || title, artist: r.artist || artist, source: 'kugou-local', lines: parseLrc(r.text) };
+        if (r && r.lines && r.lines.length) return { key, title: r.title || title, artist: r.artist || artist, source: 'kugou-local', lines: r.lines };
       } catch (e) {}
     }
     // 3) QQ 音乐官方源（可开关关闭）：无精确 id 时优先——QQ 曲库最全、明文 LRC 与播放同源，

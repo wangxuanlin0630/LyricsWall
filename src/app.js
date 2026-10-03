@@ -135,6 +135,7 @@
     st_color: '#ffffff', st_rainbow: true, st_glow: true,
     ty_family: 'system', ty_custom: '', ty_font_v: 0,
     lc_size: 100, lc_color: '#ffffff', lc_weight: 800, lc_spacing: 0, lc_shadow: true, lc_italic: false,
+    lc_sub: true, lc_sub_size: 55,                // 副行：翻译/音译（歌词自带时显示）
     pv_template: 'cyberRuins', pv_speed: 100, pv_size: 100, pv_motion: 100,
     pv_bgalpha: 100, pv_bpm: 120, pv_beat: 50, pv_fx_grain: true, pv_fx_scan: true, pv_fx_glitch: false,
     sh_anim: 'rotate', sh_speed: 100, sh_size: 100, sh_color: '#ffffff', sh_outline: true, sh_outline_color: '#000000', sh_outline_w: 4,
@@ -220,6 +221,8 @@
       { key: 'lc_spacing', type: 'range', label: '字间距', min: -2, max: 16, step: 0.5 },
       { key: 'lc_shadow', type: 'toggle', label: '发光阴影', desc: '当前行外发光' },
       { key: 'lc_italic', type: 'toggle', label: '斜体' },
+      { key: 'lc_sub', type: 'toggle', label: '副行（翻译/音译）', desc: '主行下方小字显示翻译或音译（歌词自带时）' },
+      { key: 'lc_sub_size', type: 'range', label: '副行字号%', desc: '相对主行字号', min: 30, max: 100, step: 5 },
     ] },
     { group: 'PV 字效', icon: 'i-video', items: [
       { key: 'pv_template', type: 'select', label: 'PV 模板', desc: '日式 PV 字效模板（PixiJS WebGL 渲染）', options: PV_TEMPLATE_OPTIONS },
@@ -708,7 +711,7 @@
       if (!stalled) {
         while (pointer < lines.length && lines[pointer].time <= t) {
           const line = lines[pointer];
-          if (line.text) animator.spawn(line.text, line.duration);
+          if (line.text) animator.spawn(line.text, line.duration, line.sub || line.roma || '');
           pointer++;
         }
       } else {
@@ -1323,6 +1326,9 @@
     rs.setProperty('--lc-spacing', (config.lc_spacing || 0) + 'px');
     document.body.classList.toggle('lc-italic', !!config.lc_italic);
     document.body.classList.toggle('lc-shadow', config.lc_shadow !== false);
+    // 副行（翻译/音译）：作用于居中歌词、漂浮墙碎片、歌综字幕
+    document.body.classList.toggle('lc-sub-off', config.lc_sub === false);
+    rs.setProperty('--lc-sub-size', String((config.lc_sub_size || 55) / 100));
     // PV 字效：CSS 兜底变量（WebGL 不可用时 classic 用）+ 引擎参数下发
     rs.setProperty('--pv-size', String((config.pv_size || 100) / 100));
     rs.setProperty('--pv-speed', String((config.pv_speed || 100) / 100));
@@ -1789,7 +1795,17 @@
     lines.forEach((ln) => {
       const div = document.createElement('div');
       div.className = 'lc-row';
-      div.textContent = ln.text;
+      const main = document.createElement('span');
+      main.className = 'lc-main';
+      main.textContent = ln.text;
+      div.appendChild(main);
+      const subText = ln.sub || ln.roma || '';
+      if (subText) {
+        const sub = document.createElement('span');
+        sub.className = 'lc-sub';
+        sub.textContent = subText;
+        div.appendChild(sub);
+      }
       frag.appendChild(div);
       centerRows.push(div);
     });
@@ -1837,6 +1853,7 @@
     });
     const cur = idx >= 0 && lines[idx] ? lines[idx].text : '';
     if (!cur) return;
+    const subText = idx >= 0 && lines[idx] ? (lines[idx].sub || lines[idx].roma || '') : '';
     // 动画选择：轮换 或 固定一种（sh_anim）
     let fx = config.sh_anim;
     if (!fx || fx === 'rotate' || SHOW_FX.indexOf(fx) < 0) {
@@ -1845,7 +1862,16 @@
     }
     const c = document.createElement('div');
     c.className = 'show-cur in-' + fx;
-    c.textContent = cur.replace(/\n/g, ' ');
+    const cm = document.createElement('div');
+    cm.className = 'show-main';
+    cm.textContent = cur.replace(/\n/g, ' ');
+    c.appendChild(cm);
+    if (subText) {
+      const cs = document.createElement('div');
+      cs.className = 'show-sub';
+      cs.textContent = String(subText).replace(/\n/g, ' ');
+      c.appendChild(cs);
+    }
     el.showStage.appendChild(c);
     // 强制一行下的自适应：实测渲染尺寸超出可用区域时等比缩小字号（横排按宽、竖排按高）
     requestAnimationFrame(() => {

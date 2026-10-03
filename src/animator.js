@@ -47,8 +47,9 @@
     /* 生成一条漂浮歌词
      * @param {string} text 歌词文本
      * @param {number} duration 该句在时间轴上的持续秒数（用于停留时长）
+     * @param {string} sub 副行文本（翻译/音译），可为空
      */
-    spawn(text, duration = 4) {
+    spawn(text, duration = 4, sub = '') {
       if (!text || !text.trim()) return null;
       const o = this.opts;
 
@@ -60,7 +61,16 @@
 
       const el = document.createElement('div');
       el.className = 'lyric-fragment';
-      el.textContent = text;
+      const main = document.createElement('div');
+      main.className = 'lf-main';
+      main.textContent = text;
+      el.appendChild(main);
+      if (sub && String(sub).trim()) {
+        const sd = document.createElement('div');
+        sd.className = 'lf-sub';
+        sd.textContent = String(sub).trim();
+        el.appendChild(sd);
+      }
 
       el.style.fontSize = rand(o.minFont, o.maxFont).toFixed(2) + 'vmin';
       el.style.color = pick(o.colors);
