@@ -205,7 +205,8 @@ function createSodaCdpAdapter(onEvent, opts) {
     if (reconnTimer) return;
     reconnTimer = setTimeout(() => {
       reconnTimer = null;
-      if (running) connect();
+      // connect 是 async：内部任何未捕获异常都必须回到重连链，否则循环静默死掉
+      if (running) Promise.resolve(connect()).catch(() => scheduleReconnect());
     }, RECONNECT_MS);
   }
 

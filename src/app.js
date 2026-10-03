@@ -225,7 +225,7 @@
     { group: '功能', icon: 'i-settings', items: [
       { key: 'ft_follow', type: 'toggle', label: '跟随播放器', desc: '总开关：自动同步系统正在播放的歌曲；关闭后桌面与网页/OBS 一起停止输出，重新开启后一起继续' },
       { key: 'ft_player', type: 'player', label: '识别播放器', desc: '锁定只跟随指定播放器（它没在播放则显示无播放，不回退到其它）；绿点=当前系统检测到', options: [
-        ['auto', '自动'], ['kugou', '酷狗音乐'], ['netease', '网易云音乐'], ['qq', 'QQ音乐']
+        ['auto', '自动'], ['kugou', '酷狗音乐'], ['netease', '网易云音乐'], ['qq', 'QQ音乐'], ['qishui', '汽水音乐']
       ] },
       { key: 'ft_output', type: 'toggle', label: '写文件输出', desc: '把播放状态写入 output/ 供外部读取' },
       { key: 'ft_online', type: 'toggle', label: '在线歌词兜底', desc: '本地无词时联网搜索' },

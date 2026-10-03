@@ -122,8 +122,16 @@ async function waitForCDP(timeoutMs) {
     try {
       const ok = await new Promise((resolve, reject) => {
         const req = http.get({ host: '127.0.0.1', port: 9222, path: '/json', timeout: 2000 }, (res) => {
-          res.resume();
-          resolve(res.statusCode === 200);
+          let body = '';
+          res.on('data', (c) => (body += c));
+          res.on('end', () => {
+            // 端口 200 不够——必须出现 orpheus:// 页面才算网易云的 CDP 就绪
+            // （9222 可能被别的程序占用，如本应用自己的调试实例）
+            try {
+              const list = JSON.parse(body);
+              resolve(Array.isArray(list) && list.some((t) => String(t.url || '').startsWith('orpheus://')));
+            } catch (e) { resolve(false); }
+          });
         });
         req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
         req.on('error', () => reject(new Error('err')));

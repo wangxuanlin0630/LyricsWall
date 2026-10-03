@@ -153,8 +153,14 @@ function createNeteaseCdpAdapter(onEvent, opts) {
         if (p.type === 'page' && String(p.url || '').startsWith('orpheus://')) { target = p; break; }
       }
     }
-    if (!target && pages.length > 0) target = pages[0];
+    // 严格化：不再 fallback 到任意 page——9222 若被别的程序占用（如本应用自己的调试实例），
+    // fallback 会把表达式注入到错误目标，表现为"有端口没数据"，且永远不会触发守卫重启。
     return target;
+  }
+  // 端口有人应答但一个 orpheus 页面都没有 → 端口被别的程序占用
+  function isWrongOwner(list) {
+    return Array.isArray(list) && list.length > 0 &&
+      !list.some((t) => t.type === 'page' && String(t.url || '').startsWith('orpheus://'));
   }
 
   function send(method, params) {
@@ -193,7 +199,12 @@ function createNeteaseCdpAdapter(onEvent, opts) {
     }
     const target = pickTarget(pages);
     if (!target || !target.webSocketDebuggerUrl) {
-      setAvail(false, 'no-target');
+      // 端口被占（无 orpheus 页面）：视同端口不可用，让守卫进程评估是否重启网易云
+      if (isWrongOwner(pages)) {
+        setAvail(false, 'port-closed');
+      } else {
+        setAvail(false, 'no-target');
+      }
       scheduleReconnect();
       return;
     }
@@ -220,7 +231,8 @@ function createNeteaseCdpAdapter(onEvent, opts) {
     if (reconnTimer) return;
     reconnTimer = setTimeout(() => {
       reconnTimer = null;
-      if (running) connect();
+      // connect 是 async：内部任何未捕获异常都必须回到重连链，否则循环静默死掉
+      if (running) Promise.resolve(connect()).catch(() => scheduleReconnect());
     }, RECONNECT_MS);
   }
 

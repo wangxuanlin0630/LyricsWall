@@ -58,6 +58,7 @@ function createWallServer(opts = {}) {
   let getBg = () => null;            // 由 main 注入：返回自定义背景图 {file} 或 null
   let getFont = () => null;          // 由 main 注入：返回当前选中本机字体文件 {file} 或 null
   let getPin = () => null;           // 由 main 注入：返回手动指定的歌词 {idx,text} 或 null
+  let getDebug = () => null;         // 由 main 注入：适配器连接诊断（kcdp/ncdp/scdp 状态）
   let lastState = null;
   let lastLines = null;
   let lastConfig = null;
@@ -121,6 +122,11 @@ function createWallServer(opts = {}) {
       if (p === '/api/config') {
         res.writeHead(200, { 'Content-Type': MIME['.json'], 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify(getConfig() || {}));
+        return;
+      }
+      if (p === '/api/debug') {
+        res.writeHead(200, { 'Content-Type': MIME['.json'], 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify(getDebug() || {}));
         return;
       }
       if (p === '/api/cover') {
@@ -221,6 +227,7 @@ function createWallServer(opts = {}) {
     setBgProvider(fn) { getBg = fn || (() => null); },
     setFontProvider(fn) { getFont = fn || (() => null); },
     setPinProvider(fn) { getPin = fn || (() => null); },
+    setDebugProvider(fn) { getDebug = fn || (() => null); },
     // LAN 开关：改变绑定地址（需配合 restart 生效）
     setHost(h) { host = (h === '127.0.0.1') ? '127.0.0.1' : '0.0.0.0'; },
     // 重新监听（切换 host 后调用）；返回新端口

@@ -94,13 +94,18 @@ function httpGetJson(url, headers, netOpts) {
  */
 function mergeTrackByTime(lines, trackLrc, field) {
   if (!trackLrc || !lines || !lines.length) return;
-  const tLines = parseLrc(trackLrc);
+  const tLines = parseLrc(trackLrc);   // parseLrc 已按 time 升序
   if (!tLines.length) return;
-  const tmap = new Map();
-  for (const tl of tLines) tmap.set(Math.round(tl.time * 1000), tl.text);
+  // 就近匹配（±1.2s 窗口）：同一接口的主轨/译轨时间戳常差几到几十毫秒
+  // （主轨 [00:00.85] 两位 vs 译轨 [00:00.851] 三位），严格等值匹配会大面积落空；
+  // 相邻歌词行间隔通常 >2s，就近取最近一条误配风险很低。双指针要求两边都有序。
+  const TOL = 1.2;
+  let j = 0;
   for (const ln of lines) {
-    const t = tmap.get(Math.round(ln.time * 1000));
-    if (t) ln[field] = t;
+    while (j + 1 < tLines.length &&
+           Math.abs(tLines[j + 1].time - ln.time) <= Math.abs(tLines[j].time - ln.time)) j++;
+    const cand = tLines[j];
+    if (cand && Math.abs(cand.time - ln.time) <= TOL) ln[field] = cand.text;
   }
 }
 
@@ -331,11 +336,14 @@ async function pickQQSong(title, artist, durationMs) {
  * cacheDir 为空（如脱离 Electron 单测）时全部降级为 no-op，不影响在线取词。
  */
 const CACHE_MAX = 2000;
+// 缓存格式版本：翻译/音译轨合并等影响 lines 内容的修复上线后 bump，
+// 旧条目自然失效（文件名不同即孤立，无需删除）。
+const CACHE_VER = 'v2';
 function createLyricsCache(dir) {
   const noop = { get: () => null, put: () => {}, del: () => {}, dir: null };
   if (!dir) return noop;
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { return noop; }
-  const fileOf = (key) => path.join(dir, crypto.createHash('sha1').update(String(key)).digest('hex') + '.json');
+  const fileOf = (key) => path.join(dir, crypto.createHash('sha1').update(CACHE_VER + ':' + String(key)).digest('hex') + '.json');
   let puts = 0;
   function prune() {
     try {

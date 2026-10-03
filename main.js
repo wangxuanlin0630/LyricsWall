@@ -148,6 +148,19 @@ wallServer.setStateProvider(() => lastUnified);
 wallServer.setLinesProvider(() => lastLines);
 wallServer.setConfigProvider(() => layoutConfig);
 wallServer.setPinProvider(() => manualPin);
+// 适配器连接诊断（排查"只识别歌名/歌词不跟随"类问题用）
+wallServer.setDebugProvider(() => {
+  try {
+    return {
+      ts: Date.now(),
+      netease: playerManager.getNeteaseCdpState ? playerManager.getNeteaseCdpState() : null,
+      soda: playerManager.getSodaCdpState ? playerManager.getSodaCdpState() : null,
+      activePlayers: playerManager.getActivePlayers ? playerManager.getActivePlayers() : [],
+      current: lastUnified ? { playerId: lastUnified.playerId, source: lastUnified.source, status: lastUnified.status, title: lastUnified.title } : null,
+      lines: lastLines ? { source: lastLines.source, count: (lastLines.lines || []).length, withSub: (lastLines.lines || []).filter((l) => l.sub).length, withRoma: (lastLines.lines || []).filter((l) => l.roma).length } : null,
+    };
+  } catch (e) { return { error: String(e && e.message || e) }; }
+});
 
 /* ------------------- 自定义背景图：选图→落盘 userData/backgrounds→HTTP 分发全端 ------------------- */
 function bgDir() {
