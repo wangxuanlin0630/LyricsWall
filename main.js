@@ -5,7 +5,7 @@ const os = require('os');
 const https = require('https');
 const { execFile } = require('child_process');
 const { createPlayerManager } = require('./players/registry');
-const { createLyricsService } = require('./lyrics-service');
+const { createLyricsService, qqCoverUrl } = require('./lyrics-service');
 const { createWallServer } = require('./server/http-server');
 const { createOutputWriter } = require('./server/output-writer');
 const kugouPatcher = require('./players/kugou-patcher');
@@ -273,6 +273,39 @@ function broadcastLines(payload) {
 }
 
 const lyricsService = createLyricsService((payload) => broadcastLines(payload), lyricsCacheDir());
+/* QQ 封面修补：SMTC 缩略图在部分机器因 WinRT 投影失效读不出（流是裸 ComObject、Size=0，
+ * 详见 tools/nowplaying-watch.ps1 注释），QQ 事件常无可用封面。改为按歌名查 QQ API 的
+ * albummid 拼 T002 封面 URL（与 PlayerCap fetchCoverURL 同源）。异步解析、同首去重缓存，
+ * 命中后重广播当前事件（仍是同一首歌才贴，防慢响应贴到下一首）。 */
+const qqCoverCache = new Map();   // 'title|artist' -> url|''（空串=查过没有）
+let qqCoverPending = '';
+function patchQQCover(ev) {
+  if (!ev || !ev.ok || ev.playerId !== 'qq' || !ev.title) return;
+  if (ev.cover && /^https?:/i.test(ev.cover)) return;   // 已有可用 http 封面
+  const key = (ev.title || '') + '|' + (ev.artist || '');
+  const cached = qqCoverCache.get(key);
+  if (cached !== undefined) {
+    if (cached) { ev.cover = cached; rebroadcastNow(); }
+    return;
+  }
+  if (qqCoverPending === key) return;
+  qqCoverPending = key;
+  qqCoverUrl(ev.title, ev.artist).then((url) => {
+    qqCoverCache.set(key, url || '');
+    if (qqCoverPending === key) qqCoverPending = '';
+    if (!url) return;
+    if (lastUnified && lastUnified.ok && lastUnified.playerId === 'qq' &&
+        (lastUnified.title || '') === ev.title && (lastUnified.artist || '') === ev.artist) {
+      lastUnified = Object.assign({}, lastUnified, { cover: url });
+      rebroadcastNow();
+    }
+  }).catch(() => { qqCoverCache.set(key, ''); if (qqCoverPending === key) qqCoverPending = ''; });
+}
+function rebroadcastNow() {
+  if (!lastUnified) return;
+  if (mainWindow && !mainWindow.isDestroyed()) { try { mainWindow.webContents.send('nowplaying', lastUnified); } catch (e) {} }
+  try { wallServer.broadcastState(lastUnified); } catch (e) {}
+}
 const playerManager = createPlayerManager((ev) => {
   // 跟随总闸关闭：不更新快照、不向任何端广播（桌面与网页/OBS 一起停）
   if (!layoutConfig.ft_follow) return;
@@ -283,6 +316,7 @@ const playerManager = createPlayerManager((ev) => {
   try { wallServer.broadcastState(ev); } catch (e) {}
   try { if (layoutConfig.ft_output) outputWriter.update(ev); } catch (e) {}
   try { lyricsService.handleEvent(ev); } catch (e) {}
+  try { patchQQCover(ev); } catch (e) {}
 }, {
   onKugouPortClosed: () => { try { tryAutoPatchKugou(); } catch (e) {} },
   onNeteasePortClosed: () => { try { tryAutoPatchNetease(); } catch (e) {} },

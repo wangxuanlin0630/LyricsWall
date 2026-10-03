@@ -118,6 +118,8 @@ function createPlayerManager(onUnified, opts) {
       const p = np.data;
       ev.positionMs = p.positionMs;
       if (p.durationMs > 0) ev.durationMs = p.durationMs;
+      // 封面透传：网易云 SMTC 常无缩略图，而 CDP 能从 DOM/Redux 拿到 http 封面
+      if (p.cover) ev.cover = String(p.cover);
       ev.updatedMs = Date.now();   // 让上层 hasPos() 成立、按真实进度插值（暂停时不插值，天然冻结）
       if (p.nid) ev.nid = String(p.nid);
       else if (p.id) ev.nid = String(p.id);

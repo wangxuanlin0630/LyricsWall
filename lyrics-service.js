@@ -312,6 +312,26 @@ async function fetchNeteaseTracksFor(title, artist, refLines) {
   return aligned[0];
 }
 
+/* QQ 封面：搜索结果直接带 albummid，按 PlayerCap 的 buildCoverURL 模式拼
+ * https://y.gtimg.cn/music/photo_new/T002R300x300M000<albummid>.jpg（实测 200 image/jpeg）。
+ * 用途：SMTC 缩略图在部分机器因 WinRT 投影失效读不出（流是裸 ComObject、Size=0），
+ * 主进程在 QQ 事件无可用封面时按歌名补。封面是装饰性数据，用宽匹配：相似度够 → 精确候选，
+ * 否则回退第一个有专辑的候选（聊胜于无）。 */
+async function qqCoverUrl(title, artist) {
+  const q = (String(title || '') + ' ' + String(artist || '')).trim();
+  if (!q) return '';
+  let list;
+  try { list = await qqSearch(q); } catch (e) { return ''; }
+  let fallback = '';
+  for (const s of (list || [])) {
+    if (!s.albummid) continue;
+    const url = 'https://y.gtimg.cn/music/photo_new/T002R300x300M000' + s.albummid + '.jpg';
+    if (!fallback) fallback = url;
+    if (title && krc.similarity(title, s.songname || '') >= 0.6) return url;
+  }
+  return fallback;
+}
+
 /* QRC 逐字轨 → 行级 LRC：行头 [startMs,durMs] 转 [mm:ss.xx]，行内剔除每个字的 (ts,dur) 标签。
  * 逐字效果暂缓不做，但行级音译（日语罗马音等）对跟唱足够用。 */
 function qrcToLineLrc(text) {
@@ -662,4 +682,4 @@ function createLyricsService(onLines, cacheDir) {
   };
 }
 
-module.exports = { createLyricsService, parseLrc, pickOnlineSong, pickQQSong, synthesizeTimeline };
+module.exports = { createLyricsService, parseLrc, pickOnlineSong, pickQQSong, synthesizeTimeline, qqCoverUrl };

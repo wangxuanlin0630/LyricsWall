@@ -38,6 +38,7 @@ function Emit($obj) {
 # 封面缩略图缓存（固定临时文件，歌变才重写，避免每轮 IO）
 $coverFile = Join-Path $env:TEMP 'dtgc_cover.jpg'
 $lastCoverKey = $null
+$coverOk = $false   # 本会话是否真正写入成功过：只有写成功才上报路径（WinRT 投影失效时流是裸 ComObject、Size=0、写不出）
 
 # 酷狗 ini 状态缓存（事件驱动：切歌/暂停/拖动时才重写）
 $iniPath = Join-Path $env:APPDATA 'KuGou8\KuGou.ini'
@@ -83,13 +84,13 @@ while ($true) {
       $rate = 1
       try { if ($null -ne $pb.PlaybackRate) { $rate = [double]$pb.PlaybackRate } } catch {}
 
-      # 封面：歌变才重新落盘
+      # 封面：歌变才重新落盘。写入成功才记 key（失败留下轮重试）；
+      # 只有本会话真实写出过文件才上报路径——绝不上报不存在的路径（上层会当封面有效而显示空白）。
       $coverPath = $null
       try {
         if ($media.Thumbnail) {
           $key = "$($media.Title)|$($media.Artist)"
           if ($key -ne $lastCoverKey) {
-            $lastCoverKey = $key
             $ras = Await ($media.Thumbnail.OpenReadAsync()) ($streamType)
             $size = [uint64]$ras.Size
             if ($size -gt 0 -and $size -lt 20MB) {
@@ -98,9 +99,11 @@ while ($true) {
               $buf = New-Object byte[] $size
               $reader.ReadBytes($buf)
               [IO.File]::WriteAllBytes($coverFile, $buf)
+              $lastCoverKey = $key
+              $coverOk = $true
             }
           }
-          $coverPath = $coverFile
+          if ($coverOk -and (Test-Path $coverFile)) { $coverPath = $coverFile }
         }
       } catch { $coverPath = $null }
 

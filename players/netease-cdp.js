@@ -64,12 +64,17 @@ const JS_GET_PLAY_INFO = `(() => {
         let coverImg = bar.querySelector('.miniVinylWrapper img');
         if (coverImg && coverImg.src) {
           let u = coverImg.src;
+          // 剥掉 CEF 内部缓存协议壳：orpheus://cache/?<真实https URL>
+          // —— 外层渲染进程与 /api/cover 代理都加载不了 orpheus:// 自定义协议
+          const cachePrefix = 'orpheus://cache/?';
+          if (u.indexOf(cachePrefix) === 0) u = u.substring(cachePrefix.length);
           let idx = u.indexOf('thumbnail=');
           if (idx > -1) {
             let end = u.indexOf('&', idx);
             u = u.substring(0, idx) + 'thumbnail=300y300' + (end > -1 ? u.substring(end) : '');
           }
-          result.domCoverUrl = u;
+          // 非 http(s) 一律丢弃，让下方 track.album.picUrl 直连地址兜底
+          if (/^https?:/i.test(u)) result.domCoverUrl = u;
         }
       }
     } catch(e) {}
