@@ -238,6 +238,7 @@
     btnPrevMode: document.getElementById('btnPrevMode'),
     sideNav: document.getElementById('sideNav'),
     panelArea: document.getElementById('panelArea'),
+    previewPane: document.getElementById('previewPane'),
     seek: document.getElementById('seek'),
     volume: document.getElementById('volume'),
     curTime: document.getElementById('curTime'),
@@ -925,6 +926,7 @@
       b.classList.toggle('active', b.dataset.nav === name));
     document.querySelectorAll('.panel-page').forEach(p =>
       p.classList.toggle('active', p.dataset.page === name));
+    restoreMiniPos();
     if (viewMode === 'card' || viewMode === 'pv') highlightCenter(centerCur, true);
   }
   function closePanel() {
@@ -933,6 +935,7 @@
     document.body.classList.remove('prev-mini');
     document.body.classList.add('prev-large');
     document.querySelectorAll('#sideNav .sn-btn').forEach(b => b.classList.remove('active'));
+    clearInlineMiniPos();   // 大预览铺满，清掉小窗拖拽留下的内联定位
   }
   document.querySelectorAll('#sideNav .sn-btn[data-nav]').forEach(b => {
     b.onclick = () => showPanel(b.dataset.nav);
@@ -942,16 +945,87 @@
       if (curPanel) { closePanel(); return; }
       document.body.classList.toggle('prev-mini');
       document.body.classList.toggle('prev-large');
+      if (document.body.classList.contains('prev-mini')) restoreMiniPos();
+      else clearInlineMiniPos();
     };
   }
+
+  /* 小窗预览拖拽：纯页面内坐标改 previewPane 定位（不涉及窗口移动/DPI）；位置记忆 + 双击复位 */
+  const MINI_POS_KEY = 'lw_mini_pos_v1';
+  function placeMini(x, y, save) {
+    const pane = el.previewPane, bar = document.getElementById('miniDragBar');
+    if (!pane) return;
+    const area = document.getElementById('workArea').getBoundingClientRect();
+    const w = pane.offsetWidth, h = pane.offsetHeight;
+    x = Math.min(Math.max(0, x), Math.max(0, area.width - w));
+    y = Math.min(Math.max(0, y), Math.max(0, area.height - h));
+    pane.style.left = x + 'px'; pane.style.top = y + 'px';
+    pane.style.right = 'auto'; pane.style.bottom = 'auto';
+    if (bar) { bar.style.left = x + 'px'; bar.style.top = (y + 6) + 'px'; bar.style.right = 'auto'; }
+    if (save) { try { localStorage.setItem(MINI_POS_KEY, JSON.stringify({ x, y })); } catch (e) {} }
+  }
+  function clearInlineMiniPos() {
+    const pane = el.previewPane, bar = document.getElementById('miniDragBar');
+    if (!pane) return;
+    pane.style.left = ''; pane.style.top = ''; pane.style.right = ''; pane.style.bottom = '';
+    if (bar) { bar.style.left = ''; bar.style.top = ''; bar.style.right = ''; }
+  }
+  function restoreMiniPos() {
+    if (!document.body.classList.contains('prev-mini')) return;
+    try {
+      const p = JSON.parse(localStorage.getItem(MINI_POS_KEY) || 'null');
+      if (p && typeof p.x === 'number' && typeof p.y === 'number') placeMini(p.x, p.y, false);
+    } catch (e) {}
+  }
+  (function setupMiniDrag() {
+    const bar = document.getElementById('miniDragBar');
+    if (!bar || !el.previewPane) return;
+    let drag = null;
+    const workArea = () => document.getElementById('workArea').getBoundingClientRect();
+    bar.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
+      const r = el.previewPane.getBoundingClientRect();
+      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      bar.classList.add('dragging');
+    });
+    // move/up 挂 window：不依赖 pointer capture，合成事件与触屏都能稳定冒泡
+    window.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const a = workArea();
+      placeMini(e.clientX - a.left - drag.dx, e.clientY - a.top - drag.dy, false);
+    });
+    const endDrag = () => {
+      if (!drag) return;
+      drag = null;
+      bar.classList.remove('dragging');
+      const r = el.previewPane.getBoundingClientRect(), a = workArea();
+      placeMini(r.left - a.left, r.top - a.top, true);
+    };
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+    bar.addEventListener('dblclick', () => {
+      try { localStorage.removeItem(MINI_POS_KEY); } catch (e) {}
+      clearInlineMiniPos();
+    });
+    window.addEventListener('resize', () => {
+      if (!drag && document.body.classList.contains('prev-mini') && el.previewPane.style.left) {
+        const r = el.previewPane.getBoundingClientRect(), a = workArea();
+        placeMini(r.left - a.left, r.top - a.top, true);
+      }
+    });
+  })();
 
   /* 歌词面板标签切换（仅作用于歌词面板内） */
   document.querySelectorAll('#panelArea [data-page="lyrics"] .tab').forEach(tab => {
     tab.onclick = () => {
       const name = tab.dataset.tab;
       tab.parentElement.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
-      document.querySelectorAll('#panelArea [data-page="lyrics"] .tab-body').forEach(b =>
-        b.classList.toggle('hidden', b.dataset.body !== name));
+      document.querySelectorAll('#panelArea [data-page="lyrics"] .tab-body').forEach(b => {
+        const on = b.dataset.body === name;
+        b.classList.toggle('hidden', !on);
+        b.classList.toggle('active', on);
+      });
     };
   });
 

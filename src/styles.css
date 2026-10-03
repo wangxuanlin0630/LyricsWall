@@ -316,6 +316,9 @@ body.bg-custom #bgCustom { display: block; }
 }
 .pp-card-title { font-size: 13px; font-weight: 600; color: var(--txt-dim); margin-bottom: 10px; }
 .pp-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 面板内带文字的功能按钮：自适应宽度横排（固定 26px 会把长文字挤成竖排） */
+.pp-row .cbtn:not(.sm) { width: auto; height: 30px; padding: 0 13px; }
+.pp-row .cbtn:not(.sm) .ico { flex: none; }
 .pp-hint { font-size: 12px; color: var(--txt-faint); line-height: 1.5; margin-top: 4px; }
 .pp-url { font-size: 12px; color: var(--txt-faint); word-break: break-all; background: rgba(255,255,255,.05); padding: 8px 10px; border-radius: 8px; margin-bottom: 10px; }
 .pp-url:empty { display: none; }
@@ -421,6 +424,7 @@ body.app-display #sideNav,
 body.app-display #panelArea,
 body.app-display #statusBar,
 body.app-display #viewToggle,
+body.app-display #miniDragBar,
 body.app-display #syncHint { display: none !important; }
 body.app-display #mainArea { flex: 1; }
 body.app-display #workArea { padding: 0; }
@@ -646,6 +650,34 @@ body.prev-mini #previewPane {
 body.prev-mini #panelArea { display: flex; }
 body.prev-mini #workArea { padding: 0; }
 body.prev-mini #displayView { padding: 3vh 4% 4vh; gap: 2vh; }
+
+/* 小窗拖拽手柄：浮在小窗顶部内侧，默认位置与小窗对齐；拖拽时由 JS 同步 left/top */
+#miniDragBar {
+  display: none; position: absolute; z-index: 31;
+  top: 20px; right: 14px; width: min(400px, 42vw); height: 22px;
+  align-items: center; justify-content: center;
+  border-radius: 11px; cursor: grab; touch-action: none;
+  background: linear-gradient(180deg, rgba(8,10,18,.50), rgba(8,10,18,.10));
+  transition: background .18s;
+}
+body.prev-mini #miniDragBar { display: flex; }
+#miniDragBar:hover { background: linear-gradient(180deg, rgba(20,28,48,.72), rgba(8,10,18,.18)); }
+#miniDragBar:active { cursor: grabbing; }
+#miniDragBar::before {
+  content: ""; width: 34px; height: 3px; border-radius: 2px;
+  background: rgba(255,255,255,.55);
+  box-shadow: 0 -7px 0 rgba(255,255,255,.32), 0 7px 0 rgba(255,255,255,.32);
+}
+#miniDragBar.dragging { background: rgba(20,28,48,.82); }
+
+/* 歌词面板：panel-page → pp-body → tab-body → 列表，完整 flex 链保证长歌词可滚可点选 */
+.pp-body-fill { display: flex; flex-direction: column; min-height: 0; }
+.pp-body-fill .tab-body { min-height: 0; overflow: hidden; }
+.pp-body-fill .tab-body.active { flex: 1; }
+.pp-body-fill .tab-body > .row { flex: none; }
+.results { flex: 1; max-height: none; }
+#pasteArea { flex: 1; height: auto; min-height: 168px; }
+#previewList { min-height: 0; }
 
 /* ---------- 窄屏适配 ---------- */
 @media (max-width: 900px) {
