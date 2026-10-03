@@ -111,6 +111,12 @@ function createNeteaseCdpAdapter(onEvent, opts) {
   let inflight = false;
   let running = false;
   let lastAvail = null;
+  // 秒级进度防抖：DOM 只有整秒（.curtime-thumb "mm:ss"），若每帧都刷新 updatedMs，
+  // 渲染端插值会每 300ms 被重置回整秒点 → 歌词系统性慢半拍（实测"网易云歌词有延迟"）。
+  // 改为：秒值变化那一刻才记 updatedMs=此刻、position=新秒；秒值不变则保持旧 updatedMs，
+  // 让客户端插值自然推进，直到下一秒 tick 校准——最坏误差=轮询间隔而非整秒。
+  let lastSec = -1;
+  let lastSecChangeMs = 0;
 
   function emit(ev) { if (onEvent) { try { onEvent(ev); } catch (e) {} } }
 
@@ -294,6 +300,16 @@ function createNeteaseCdpAdapter(onEvent, opts) {
       if (domTimeSec >= 0) {
         positionMs = Math.round(domTimeSec * 1000);
       }
+      // 秒级防抖：只在秒值变化时刷新锚点（切歌/seek 时秒值必变，天然覆盖）
+      const now = Date.now();
+      let anchorMs = lastSecChangeMs;
+      if (domTimeSec >= 0 && domTimeSec !== lastSec) {
+        lastSec = domTimeSec;
+        lastSecChangeMs = now;
+        anchorMs = now;
+      }
+      if (domTimeSec < 0) { lastSec = -1; anchorMs = now; }   // 读不到进度：不防抖
+      if (status !== 'playing') anchorMs = now;               // 非播放态：不依赖插值
 
       emit({
         ok: true,
@@ -308,7 +324,7 @@ function createNeteaseCdpAdapter(onEvent, opts) {
         cover,
         hash: nid,
         nid,
-        updatedMs: Date.now(),
+        updatedMs: anchorMs || now,
         rate: 1,
         ts: Date.now(),
       });

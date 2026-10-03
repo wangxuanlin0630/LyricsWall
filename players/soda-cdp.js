@@ -105,6 +105,13 @@ function createSodaCdpAdapter(onEvent, opts) {
   let running = false;
   let lastAvail = null;
   let lastLyric = null;   // 最近一次带歌词的快照 {mediaId,lyricType,lyricContent,translationLrc,updatedMs}
+  // 1Hz 采样边沿落锚（对齐 PlayerCap 汽水「承重」逻辑，§7.7）：progressSeconds 是 ~1Hz 采样，
+  // 两次采样之间值不变。每轮 300ms 都刷 updatedMs 会把客户端插值基点重置到陈旧采样 →
+  // 进度阶梯抖动（实测 +1s 步进、每步内 0.3s 抖动）。只在采样值变化时落锚，客户端墙钟插值
+  // 自然推进到下一次采样校准——最坏误差=采样间隔而非轮询间隔。
+  let lastProgSec = -1;
+  let lastProgChangeMs = 0;
+  let lastMediaId = '';   // 切歌时强制下一次采样重新落锚（防同值抑制：A 停在 0:00、B 从 0:00 起播）
 
   function emit(ev) { if (onEvent) { try { onEvent(ev); } catch (e) {} } }
 
@@ -250,6 +257,8 @@ function createSodaCdpAdapter(onEvent, opts) {
       // 无曲目（媒体详情为空）：视为 stopped
       if (!mediaId && !title) {
         lastLyric = null;
+        lastMediaId = '';
+        lastProgSec = -1;
         emit({
           ok: true, source: 'cdp', playerId: 'qishui', status: 'stopped',
           positionMs: 0, durationMs: 0, title: '', artist: '', album: '',
@@ -273,12 +282,22 @@ function createSodaCdpAdapter(onEvent, opts) {
         }
       }
 
+      // 边沿落锚：采样值变化才刷新插值锚点；缓冲（isLoading，进度停更）或非播放态用 now 冻结插值，
+      // 防止缓冲期间客户端按墙钟凭空前冲（PlayerCap §7.7.2：缓冲结束会被判成假回跳）。
+      // 切歌（mediaId 变化）先复位采样记录，强制下一次采样落锚（防同值抑制）。
+      if (mediaId !== lastMediaId) { lastMediaId = mediaId; lastProgSec = -1; }
+      const progSec = Number(data.progressSeconds || 0);
+      const nowMs = Date.now();
+      let anchorMs = lastProgChangeMs;
+      if (progSec !== lastProgSec) { lastProgSec = progSec; lastProgChangeMs = nowMs; anchorMs = nowMs; }
+      if (!data.isPlaying || data.isLoading) anchorMs = nowMs;
+
       emit({
         ok: true,
         source: 'cdp',
         playerId: 'qishui',
         status: data.isPlaying ? 'playing' : 'paused',
-        positionMs: Math.round(Number(data.progressSeconds || 0) * 1000),
+        positionMs: Math.round(progSec * 1000),
         durationMs: Math.round(Number(data.durationSeconds || 0) * 1000),
         title,
         artist: (data.artists || []).join('/'),
@@ -286,9 +305,9 @@ function createSodaCdpAdapter(onEvent, opts) {
         cover: String(data.coverUrl || ''),
         hash: '',
         nid: mediaId ? ('soda:' + mediaId) : '',
-        updatedMs: Date.now(),
+        updatedMs: anchorMs || nowMs,
         rate: 1,
-        ts: Date.now(),
+        ts: nowMs,
       });
     } catch (e) {
       if (ws && ws.readyState !== WebSocket.OPEN) {

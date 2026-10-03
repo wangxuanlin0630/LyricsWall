@@ -87,11 +87,33 @@ function httpGetJson(url, headers, netOpts) {
   });
 }
 
+/* ---------------- HTML 实体反转义 ----------------
+ * QQ fcg 返回的 lyric/trans 含 HTML 实体（&amp; &quot; &#39; 等），
+ * 对齐 PlayerCap 的 html.UnescapeString——不转义会把 &amp; 直接推上歌词墙。
+ * 注意：roma 是 QRC/base64 包装，不能反转义（会破坏 base64 字符集）。
+ */
+function htmlUnescape(s) {
+  const NAMED = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+  return String(s || '').replace(/&(amp|lt|gt|quot|apos|nbsp);|&#(\d+);|&#x([0-9a-fA-F]+);/g,
+    (m, named, dec, hex) => {
+      if (named) return NAMED[named];
+      try { return String.fromCodePoint(dec ? parseInt(dec, 10) : parseInt(hex, 16)); } catch (e) { return m; }
+    });
+}
+
 /* ---------------- 翻译/音译轨合并（对齐 PlayerCap） ----------------
  * 网易云：tlyric/romalrc 是独立 LRC，按毫秒时间戳就近匹配主行 → line.sub / line.roma。
  * 酷狗 KRC：内嵌 [language:] 轨已在 krc.krcToLines 按行号对齐，此处无需再合。
  * QQ：trans 字段是独立 LRC，按毫秒时间戳就近匹配 → line.sub。
  */
+// QQ 翻译轨的产品文案/占位符（对齐 PlayerCap transIsDroppable）：
+// 首行常塞"QQ音乐享有本翻译作品的著作权"/"以下歌词翻译由文曲大模型提供"声明，
+// "//"是"本行不翻译"占位符——不过滤会被就近匹配挂到第一行上墙。
+const TRANS_DROP_RE = /著作权|版权|歌词翻译/;
+function transDroppable(text) {
+  const t = String(text || '').trim();
+  return !t || t === '//' || TRANS_DROP_RE.test(t);
+}
 function mergeTrackByTime(lines, trackLrc, field) {
   if (!trackLrc || !lines || !lines.length) return;
   const tLines = parseLrc(trackLrc);   // parseLrc 已按 time 升序
@@ -105,7 +127,9 @@ function mergeTrackByTime(lines, trackLrc, field) {
     while (j + 1 < tLines.length &&
            Math.abs(tLines[j + 1].time - ln.time) <= Math.abs(tLines[j].time - ln.time)) j++;
     const cand = tLines[j];
-    if (cand && Math.abs(cand.time - ln.time) <= TOL) ln[field] = cand.text;
+    if (cand && Math.abs(cand.time - ln.time) <= TOL && !(field === 'sub' && transDroppable(cand.text))) {
+      ln[field] = cand.text;
+    }
   }
 }
 
@@ -235,10 +259,57 @@ async function qqLyric(songmid) {
     '&format=json&nobase64=1&g_tk=5381&loginUin=0&hostUin=0&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq&needNewCode=0';
   const json = await httpGetJson(url, Object.assign({}, QQ_HEADERS, { Referer: 'https://y.qq.com/portal/player.html' }), QQ_NET);
   return {
-    lyric: (json || {}).lyric || '',   // nobase64=1 → 明文 LRC
-    trans: (json || {}).trans || '',   // 翻译轨（同样是 LRC 格式）
-    roma: (json || {}).roma || '',     // 音译轨（QRC 逐字格式，可能 base64）
+    lyric: htmlUnescape((json || {}).lyric || ''),   // nobase64=1 → 明文 LRC（含 HTML 实体，需反转义）
+    trans: htmlUnescape((json || {}).trans || ''),   // 翻译轨（同样是 LRC 格式，同需反转义）
+    roma: (json || {}).roma || '',                   // 音译轨（QRC 逐字格式，可能 base64——不能反转义）
   };
+}
+
+/* 为 QQ 主词挑网易云翻译/音译轨：不以歌名/歌手相似度定胜负（QQ 歌手名常带括号别名，
+ * 如「初音未来 (初音ミク)」，会把网易云检索带偏到翻唱版——实测千本桜挑中 Poppin'Party Cover），
+ * 而是抓前若干候选的 lyric/v1，用 QQ 主词时间轴与候选主词的重叠行数决胜：
+ * 同版本时间轴几乎逐行重合，翻唱/不同母带自然筛掉；重叠率 <60% 说明曲库无同版，宁可不补也不挂错轨。 */
+async function fetchNeteaseTracksFor(title, artist, refLines) {
+  if (!title || !refLines || !refLines.length) return null;
+  const queries = [];
+  const ta = (String(title || '') + ' ' + String(artist || '')).trim();
+  const t = String(title || '').trim();
+  if (ta) queries.push(ta);
+  if (t && t !== ta) queries.push(t);
+  const seen = new Map();   // id -> 粗排分（歌名/歌手相似，只用于缩小抓取范围）
+  for (const q of queries) {
+    let songs;
+    try { songs = await onlineSearch(q); } catch (e) { continue; }
+    for (const s of (songs || [])) {
+      let score = krc.similarity(title, s.name);
+      if (artist && (s.artists || []).some((a) => krc.similarity(artist, a.name) >= 0.6)) score += 0.25;
+      const prev = seen.get(s.id);
+      if (!prev || score > prev) seen.set(s.id, score);
+    }
+  }
+  const cands = Array.from(seen.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id]) => id);
+  const scored = [];   // { tlyric, romalrc, hit }
+  for (const id of cands) {
+    let full;
+    try { full = await onlineLyricFull(id); } catch (e) { continue; }
+    if (!full.lrc || (!full.tlyric && !full.romalrc)) continue;
+    const neLines = parseLrc(full.lrc);
+    if (!neLines.length) continue;
+    let hit = 0;
+    for (const q of refLines) {
+      for (const n of neLines) { if (Math.abs(n.time - q.time) <= 1.6) { hit++; break; } }
+    }
+    scored.push({ tlyric: full.tlyric, romalrc: full.romalrc, hit });
+  }
+  if (!scored.length) return null;
+  // 同版本可能有多个条目（不同专辑收录），hit 并列时轨更全的优先
+  // （实测千本桜：hit=46 的两个候选中一个无 romalrc、另一个 tlyric+romalrc 全有）。
+  const maxHit = Math.max.apply(null, scored.map((c) => c.hit));
+  const aligned = scored.filter((c) => c.hit >= Math.max(Math.ceil(refLines.length * 0.6), maxHit - 2));
+  if (!aligned.length) return null;   // 重叠率门槛：不同母带时间轴整体漂移，挂上必错
+  aligned.sort((a, b) =>
+    ((b.romalrc ? 1 : 0) + (b.tlyric ? 1 : 0)) - ((a.romalrc ? 1 : 0) + (a.tlyric ? 1 : 0)));
+  return aligned[0];
 }
 
 /* QRC 逐字轨 → 行级 LRC：行头 [startMs,durMs] 转 [mm:ss.xx]，行内剔除每个字的 (ts,dur) 标签。
@@ -320,6 +391,18 @@ async function pickQQSong(title, artist, durationMs) {
     if (lines.length) {
       mergeTrackByTime(lines, lyr.trans, 'sub');
       mergeTrackByTime(lines, qrcToLineLrc(lyr.roma), 'roma');
+      // QQ 官方翻译/音译轨经常为空（实测大量歌曲 trans len=0）：
+      // 回退网易云 lyric/v1 的 tlyric/romalrc。候选按「与 QQ 主词时间轴重叠行数」决胜
+      // （歌名相似会把结果带偏到翻唱版），重叠率 <60% 不补——宁缺毋滥。
+      if (!lines.some((l) => l.sub) || !lines.some((l) => l.roma)) {
+        try {
+          const tr = await fetchNeteaseTracksFor(meta.title || title, meta.artist || artist, lines);
+          if (tr) {
+            if (!lines.some((l) => l.sub)) mergeTrackByTime(lines, tr.tlyric, 'sub');
+            if (!lines.some((l) => l.roma)) mergeTrackByTime(lines, tr.romalrc, 'roma');
+          }
+        } catch (e) {}
+      }
       return { lines, title: meta.title, artist: meta.artist };
     }
     if (!untimed) untimed = { text, score: cand.score, title: meta.title, artist: meta.artist };
@@ -338,7 +421,8 @@ async function pickQQSong(title, artist, durationMs) {
 const CACHE_MAX = 2000;
 // 缓存格式版本：翻译/音译轨合并等影响 lines 内容的修复上线后 bump，
 // 旧条目自然失效（文件名不同即孤立，无需删除）。
-const CACHE_VER = 'v2';
+// v3：QQ lyric/trans HTML 实体反转义 + QQ 无翻译时网易云兜底 + 翻译轨声明文案过滤。
+const CACHE_VER = 'v3';
 function createLyricsCache(dir) {
   const noop = { get: () => null, put: () => {}, del: () => {}, dir: null };
   if (!dir) return noop;

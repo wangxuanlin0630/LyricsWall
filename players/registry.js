@@ -20,12 +20,14 @@ const { createSodaCdpAdapter } = require('./soda-cdp');
 const neteasePatch = require('./netease-patch');
 
 // SourceAppUserModelId / 进程名 关键词 → 播放器 id
+// 注意：SMTC 的 SourceAppUserModelId 在部分系统上是中文显示名（实测汽水="汽水音乐"），必须带中文别名，
+// 否则映射 unknown → 融合层路由不到对应 CDP 全量源 → 进度用 SMTC 冻结值 → 歌词钉死在第一行。
 const SOURCE_PATTERNS = [
-  [/kugou|kgmusic|\bkg\b/i, 'kugou'],
-  [/qqmusic|qq\.com|tencent/i, 'qq'],
-  [/netease|cloudmusic|163/i, 'netease'],
-  [/kuwo/i, 'kuwo'],
-  [/qishui|sipshui|bytedance.*music/i, 'qishui'],
+  [/kugou|kgmusic|\bkg\b|酷狗/i, 'kugou'],
+  [/qqmusic|qq\.com|tencent|qq音乐/i, 'qq'],
+  [/netease|cloudmusic|163|网易云/i, 'netease'],
+  [/kuwo|酷我/i, 'kuwo'],
+  [/qishui|sipshui|bytedance.*music|汽水/i, 'qishui'],
   [/spotify/i, 'spotify'],
   [/applemusic|apple.*music|itunes/i, 'apple'],
   [/potplayer/i, 'potplayer'],
@@ -42,12 +44,13 @@ function mapSourceId(id) {
 }
 
 // playerId → 传给 watch 脚本的 SourceAppUserModelId 过滤正则（字符串形式，供 PowerShell -match）
+// 与 SOURCE_PATTERNS 同步带中文别名（锁定播放器时的 SMTC 过滤同样会碰到中文 sourceId）。
 const PLAYER_REGEX = {
-  kugou: 'kugou|kgmusic|\\bkg\\b',
-  qq: 'qqmusic|qq\\.com|tencent',
-  netease: 'netease|cloudmusic|163',
-  kuwo: 'kuwo',
-  qishui: 'qishui|bytedance.*music',
+  kugou: 'kugou|kgmusic|\\bkg\\b|酷狗',
+  qq: 'qqmusic|qq\\.com|tencent|qq音乐',
+  netease: 'netease|cloudmusic|163|网易云',
+  kuwo: 'kuwo|酷我',
+  qishui: 'qishui|bytedance.*music|汽水',
   spotify: 'spotify',
   apple: 'applemusic|apple.*music|itunes',
   potplayer: 'potplayer',

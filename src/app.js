@@ -875,7 +875,11 @@
     // dataset.cur 短路 + 浏览器缓存会让封面与光晕停留在上一首
     if (!isElectron) src = '/api/cover?v=' + encodeURIComponent(String(cover));
     else if (/^https?:/i.test(cover)) src = cover;
-    else src = toFileUrl(cover);
+    else {
+      // 本地文件封面（SMTC 落盘）：路径常年不变（固定 temp 文件名），
+      // 必须带歌曲身份作版本号，否则 dataset.cur 短路导致永远显示第一首的封面
+      src = toFileUrl(cover) + '?v=' + encodeURIComponent((follow.title || '') + '|' + (follow.artist || ''));
+    }
     if (el.cover.dataset.cur !== src) {
       el.cover.dataset.cur = src;
       el.cover.src = src;
