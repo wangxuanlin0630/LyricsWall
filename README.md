@@ -133,9 +133,29 @@ $env:ELECTRON_RUN_AS_NODE = "1"
 | --- | --- | --- |
 | `补丁写入并校验成功 ✔` | 打好了 | 去第 4 步 |
 | `已打过补丁，跳过` | 之前打过，不用再打 | 去第 4 步 |
+| `未发现 libcef.dll，请用参数显式指定路径` | 酷狗没装在默认目录 | 看下面「酷狗装在别处怎么办」 |
 | `无法将"…"项识别为…` 或找不到路径 | LyricsWall 没装在默认位置 | 看下面「装在别的盘怎么办」 |
 | `检测到酷狗正在运行` | 酷狗没退干净 | 回第 1 步 |
 | `拒绝写入` / 提到 `32位` / `特征` | 酷狗版本特殊，工具自动保护 | 见 [docs/kugou-patch.md](docs/kugou-patch.md) 常见问题 |
+
+**酷狗装在别处怎么办**（提示「未发现 libcef.dll」时）：
+
+1. 开始菜单找到 **酷狗音乐** → 右键 → 更多 →「打开文件所在位置」
+2. 如果打开的是快捷方式，再右键那个快捷方式 →「打开文件所在位置」
+3. 进入的文件夹里找 `libcef.dll`，把它的完整路径记下来
+4. 三行命令照旧，最后**加上这个路径**再执行：
+
+```powershell
+$dir = "$env:LOCALAPPDATA\Programs\LyricsWall"
+$env:ELECTRON_RUN_AS_NODE = "1"
+& "$dir\LyricsWall.exe" "$dir\resources\app.asar.unpacked\tools\patch-kugou.js" "D:\酷狗目录\版本号\libcef.dll"
+```
+
+懒得找的话，也可以用这条命令自动搜出来（搜到哪个路径就填到上面）：
+
+```powershell
+Get-ChildItem "C:\Program Files","C:\Program Files (x86)","D:\" -Filter libcef.dll -Recurse -ErrorAction SilentlyContinue | Select-Object -First 5 FullName
+```
 
 **装在别的盘怎么办**（自定义过安装目录才会遇到）：
 
