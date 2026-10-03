@@ -10,6 +10,7 @@ const { createWallServer } = require('./server/http-server');
 const { createOutputWriter } = require('./server/output-writer');
 const kugouPatcher = require('./players/kugou-patcher');
 const neteasePatch = require('./players/netease-patch');
+const sodaPatch = require('./players/soda-patcher');
 
 let mainWindow = null;
 let followActive = false;
@@ -259,7 +260,6 @@ function broadcastLines(payload) {
 }
 
 const lyricsService = createLyricsService((payload) => broadcastLines(payload), lyricsCacheDir());
-
 const playerManager = createPlayerManager((ev) => {
   // 跟随总闸关闭：不更新快照、不向任何端广播（桌面与网页/OBS 一起停）
   if (!layoutConfig.ft_follow) return;
@@ -273,7 +273,36 @@ const playerManager = createPlayerManager((ev) => {
 }, {
   onKugouPortClosed: () => { try { tryAutoPatchKugou(); } catch (e) {} },
   onNeteasePortClosed: () => { try { tryAutoPatchNetease(); } catch (e) {} },
+  onSodaPortClosed: () => { try { tryActivateSoda(); } catch (e) {} },
 });
+// 汽水原生歌词注入：歌词服务按 nid(mediaId)/标题校验后直取 transport 歌词
+try { lyricsService.setSodaLyricProvider(() => playerManager.getSodaLyric()); } catch (e) {}
+
+/* ------------------- 汽水自动接入守卫：9229 没开 → 无创激活主进程 Node inspector -------------------
+ * 与网易云不同：汽水是 Electron 且反调试（argv 加参数会自杀），不能重启加参数；
+ * 激活走命名映射 + CreateRemoteThread 让目标自己拉起 inspector，不打断播放、不改文件，
+ * 因此不设一次性闸门——断线后可反复重试（节流 20s）。 */
+let sodaActivateLastTry = 0;
+function sodaPatchStatus(stage, detail) {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('soda:patch-status', { stage, detail: detail || '' });
+    }
+  } catch (e) {}
+}
+async function tryActivateSoda() {
+  const now = Date.now();
+  if (now - sodaActivateLastTry < 20000) return;   // 节流：激活是无创的，但也不用每次断线都跑
+  sodaActivateLastTry = now;
+  try {
+    if (!(await sodaPatch.findMainPid())) return;   // 汽水没跑，静默
+    sodaPatchStatus('checking');
+    const r = await sodaPatch.ensureInspector({ onStatus: sodaPatchStatus });
+    if (r.ok) sodaPatchStatus('done');
+    else if (r.reason === 'not-running') { /* 静默 */ }
+    else sodaPatchStatus('failed', r.reason || '未知原因');
+  } catch (e) { /* 绝不影响主流程 */ }
+}
 
 /* ------------------- 网易云自动接入守卫：网易云在跑但 9222 没开 → 重启带调试参数 -------------------
  * 与酷狗补丁不同：网易云只需启动参数，无需提权、无需改文件；

@@ -119,6 +119,7 @@
       checkUpdate: function () { return api.checkUpdate ? api.checkUpdate() : Promise.resolve({ ok: false }); },
       onUpdateAvailable: function (cb) { if (api.onUpdateAvailable) api.onUpdateAvailable(cb); },
       onNeteasePatchStatus: function (cb) { if (api.onNeteasePatchStatus) api.onNeteasePatchStatus(cb); },
+      onSodaPatchStatus: function (cb) { if (api.onSodaPatchStatus) api.onSodaPatchStatus(cb); },
       getServerUrl: function () {
         if (api.getServerUrl) return api.getServerUrl();
         return Promise.resolve('');

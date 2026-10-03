@@ -830,6 +830,21 @@ body.prev-mini #kugouPatchBanner { top: 46px; }
 #kugouPatchBanner .ub-x { cursor: pointer; border: 0; background: transparent; color: #c0a88a; font-size: 12px; padding: 2px 4px; }
 #kugouPatchBanner .ub-x:hover { color: #fff; }
 
+/* ---------------- 网易云/汽水接入提示横幅（复用 updateBanner 布局，冷色调） ---------------- */
+#neteasePatchBanner, #sodaPatchBanner {
+  display: none; position: fixed; top: 46px; left: 50%; transform: translateX(-50%);
+  z-index: 56; align-items: center; gap: 10px; padding: 8px 12px;
+  background: linear-gradient(90deg, #12303f, #0d2430); border: 1px solid rgba(46, 168, 255, .35);
+  border-radius: 10px; color: #d8ecff; font-size: 12px; letter-spacing: .04em;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .45);
+}
+#neteasePatchBanner.ub-hide, #sodaPatchBanner.ub-hide { display: none !important; }
+body.app-console #neteasePatchBanner, body.app-console #sodaPatchBanner { display: flex; }
+#neteasePatchBanner .ub-text, #sodaPatchBanner .ub-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#neteasePatchBanner .ub-btns, #sodaPatchBanner .ub-btns { display: flex; align-items: center; gap: 6px; flex: none; }
+#neteasePatchBanner .ub-x, #sodaPatchBanner .ub-x { cursor: pointer; border: 0; background: transparent; color: #7fa8c0; font-size: 12px; padding: 2px 4px; }
+#neteasePatchBanner .ub-x:hover, #sodaPatchBanner .ub-x:hover { color: #fff; }
+
 /* 网页端不显示标题栏、状态条、导航 */
 body:not(.electron) #titlebar,
 body:not(.electron) #sideNav,

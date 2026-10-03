@@ -30,5 +30,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateAvailable: (cb) => ipcRenderer.on('update:available', (_e, data) => cb && cb(data)),
   onKugouPatchStatus: (cb) => ipcRenderer.on('kugou:patch-status', (_e, data) => cb && cb(data)),
   onNeteasePatchStatus: (cb) => ipcRenderer.on('netease:patch-status', (_e, data) => cb && cb(data)),
+  onSodaPatchStatus: (cb) => ipcRenderer.on('soda:patch-status', (_e, data) => cb && cb(data)),
   openExternal: (url) => ipcRenderer.send('update:open', url)
 });

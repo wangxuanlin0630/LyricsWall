@@ -121,6 +121,39 @@
     eapi.onNeteasePatchStatus((d) => show((d && d.stage) || '', (d && d.detail) || ''));
   })();
 
+  /* ---------------- 汽水接入提示：无创激活 Node inspector 的进度横幅 ---------------- */
+  (function () {
+    const eapi = window.electronAPI;
+    if (!eapi || !eapi.onSodaPatchStatus) return;
+    let bar = null;
+    let hideTimer = null;
+    const TEXTS = {
+      checking: '检测到汽水音乐，正在接入…',
+      activating: '正在激活汽水调试端口（不打断播放）…',
+      done: '汽水音乐接入完成',
+    };
+    function show(stage, detail) {
+      try {
+        if (!bar) {
+          bar = document.createElement('div');
+          bar.id = 'sodaPatchBanner';
+          bar.innerHTML = '<span class="ub-text"></span><span class="ub-btns">' +
+            '<button class="ub-x" type="button" title="关闭提示">✕</button></span>';
+          document.body.appendChild(bar);
+          bar.querySelector('.ub-x').onclick = () => bar.classList.add('ub-hide');
+        }
+        const text = stage === 'failed'
+          ? '汽水接入失败：' + (detail || '未知原因')
+          : (TEXTS[stage] || '汽水接入中…');
+        bar.querySelector('.ub-text').textContent = text;
+        bar.classList.remove('ub-hide');
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        if (stage === 'done') hideTimer = setTimeout(() => bar.classList.add('ub-hide'), 6000);
+      } catch (e) {}
+    }
+    eapi.onSodaPatchStatus((d) => show((d && d.stage) || '', (d && d.detail) || ''));
+  })();
+
   const RAINBOW = ['#ffffff', '#7fd4ff', '#ff9ecb', '#ffe28a', '#a0ffb0', '#c9a6ff'];
 
   /* ---------------- 配置（与 main.js DEFAULT_CONFIG 对齐）：所有元素/功能可开关 ---------------- */

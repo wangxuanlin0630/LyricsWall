@@ -104,6 +104,23 @@ function mergeTrackByTime(lines, trackLrc, field) {
   }
 }
 
+/* 结构化行的时间就近合并（±1.5s）：用于汽水「借」酷狗音译轨。
+ * 两边断行不同（PlayerCap 为此做了字级贴合）；行级就近是简化版——对不上留空，宁缺毋滥。 */
+function mergeLinesTimeNearest(lines, srcLines, field) {
+  if (!Array.isArray(srcLines) || !srcLines.length || !lines || !lines.length) return;
+  for (const ln of lines) {
+    if (ln[field]) continue;
+    let best = null, bestDiff = 1.6;
+    for (const s of srcLines) {
+      const v = s[field];
+      if (!v) continue;
+      const d = Math.abs(s.time - ln.time);
+      if (d < bestDiff) { bestDiff = d; best = v; }
+    }
+    if (best) ln[field] = best;
+  }
+}
+
 async function onlineSearch(keyword) {
   const url = 'https://music.163.com/api/search/get/web?s=' + encodeURIComponent(keyword) + '&type=1&limit=5&offset=0';
   const json = await httpGetJson(url);
@@ -215,7 +232,33 @@ async function qqLyric(songmid) {
   return {
     lyric: (json || {}).lyric || '',   // nobase64=1 → 明文 LRC
     trans: (json || {}).trans || '',   // 翻译轨（同样是 LRC 格式）
+    roma: (json || {}).roma || '',     // 音译轨（QRC 逐字格式，可能 base64）
   };
+}
+
+/* QRC 逐字轨 → 行级 LRC：行头 [startMs,durMs] 转 [mm:ss.xx]，行内剔除每个字的 (ts,dur) 标签。
+ * 逐字效果暂缓不做，但行级音译（日语罗马音等）对跟唱足够用。 */
+function qrcToLineLrc(text) {
+  if (!text) return '';
+  // 可能的 base64 包装：解出来应以 [ 或 <?xml 开头
+  let s = String(text);
+  if (s[0] !== '[' && /^[A-Za-z0-9+/=\s]+$/.test(s) && s.length > 16) {
+    try {
+      const d = Buffer.from(s, 'base64').toString('utf8');
+      if (d.indexOf('[') >= 0) s = d;
+    } catch (e) {}
+  }
+  const out = [];
+  for (const raw of s.split(/\r\n|\n|\r/)) {
+    const m = /^\[(\d+),(\d+)\](.*)$/.exec(raw.trim());
+    if (!m) continue;
+    const body = m[3].replace(/\(\d+,\d+\)/g, '').trim();
+    if (!body) continue;
+    const sec = parseInt(m[1], 10) / 1000;
+    const mm = Math.floor(sec / 60), ss = (sec % 60).toFixed(2);
+    out.push('[' + String(mm).padStart(2, '0') + ':' + String(ss).padStart(5, '0') + ']' + body);
+  }
+  return out.join('\n');
 }
 
 // QQ 官方源择优：信任 QQ 搜索的相关性排序，再用 歌名/歌手相似 + 时长锁定版本 二次打分。
@@ -271,6 +314,7 @@ async function pickQQSong(title, artist, durationMs) {
     const lines = parseLrc(text);
     if (lines.length) {
       mergeTrackByTime(lines, lyr.trans, 'sub');
+      mergeTrackByTime(lines, qrcToLineLrc(lyr.roma), 'roma');
       return { lines, title: meta.title, artist: meta.artist };
     }
     if (!untimed) untimed = { text, score: cand.score, title: meta.title, artist: meta.artist };
@@ -345,6 +389,7 @@ function createLyricsService(onLines, cacheDir) {
   let pendingEv = null;       // 解析进行中到来的“最新”事件：切歌/下一曲时不丢失
   let onlineEnabled = true;   // 在线歌词兜底开关（桌面总控可关）
   let manual = null;          // 用户手动指定歌词 { key, payload }；切歌或重新匹配时自动失效
+  let sodaLyricProvider = null; // 汽水原生歌词快照（registry.getSodaLyric 注入）
 
   function emit(payload) { if (onLines) { try { onLines(payload); } catch (e) {} } }
 
@@ -392,7 +437,8 @@ function createLyricsService(onLines, cacheDir) {
 
   async function resolve(ev, noCache) {
     const hash = ev.hash || '';
-    const nid = ev.nid || '';   // 网易云精确歌曲 id（由 netease-db 适配器从本地库读出）
+    const nid = ev.nid || '';   // 精确歌曲 id：网易云纯数字 / 汽水 'soda:'+mediaId
+    const neteaseNid = /^\d+$/.test(nid) ? nid : '';   // 仅纯数字 id 可直取网易云官方词
     const title = ev.title || '';
     const artist = ev.artist || '';
     const key = nid ? ('nid:' + nid) : (hash || (title + '|' + artist));
@@ -405,10 +451,42 @@ function createLyricsService(onLines, cacheDir) {
       if (c) return c;
     }
 
-    // 0) 网易云精确 id：直接取官方逐行词（最准，规避同名不同版/翻唱；时间轴天然与网易云对齐）
-    if (nid && onlineEnabled) {
+    // -0.5) 汽水原生歌词：CDP transport 直取 sharedState 的歌词原文（krc/lrc）+ 独立翻译轨，
+    //       与播放天然同源同轴（最准）。音译平台没有 → 按歌名/歌手「借」酷狗 KRC 音译轨补全。
+    if (ev.playerId === 'qishui' && sodaLyricProvider) {
       try {
-        const full = await onlineLyricFull(nid);
+        const snap = sodaLyricProvider();
+        if (snap && snap.lyricContent) {
+          // 校验是同一首歌：nid(soda:mediaId) 精确匹配，或标题一致
+          const sameSong = (nid && nid === 'soda:' + snap.mediaId) ||
+            (snap.title && title && krc.similarity(title, snap.title) >= 0.8);
+          if (sameSong) {
+            let parsed = null;
+            if (snap.lyricType === 'krc') {
+              try { parsed = krc.krcToLines(snap.lyricContent); } catch (e) {}
+            }
+            const lines = parsed && parsed.lines && parsed.lines.length
+              ? parsed.lines : parseLrc(snap.lyricContent);
+            if (lines.length) {
+              mergeTrackByTime(lines, snap.translationLrc, 'sub');
+              // 借音译：主词无 roma 时，用本地酷狗 KRC 的音译轨按时间就近补
+              if (!lines.some((l) => l.roma)) {
+                try {
+                  const kg = krc.findKugouLyrics(snap.title || title, snap.artist || artist);
+                  if (kg && kg.lines) mergeLinesTimeNearest(lines, kg.lines, 'roma');
+                } catch (e) {}
+              }
+              return { key, title: snap.title || title, artist: snap.artist || artist, source: 'soda', lines };
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 0) 网易云精确 id：直接取官方逐行词（最准，规避同名不同版/翻唱；时间轴天然与网易云对齐）
+    if (neteaseNid && onlineEnabled) {
+      try {
+        const full = await onlineLyricFull(neteaseNid);
         if (full.lrc) {
           const lines = parseLrc(full.lrc);
           if (lines.length) {
@@ -437,7 +515,7 @@ function createLyricsService(onLines, cacheDir) {
     }
     // 3) QQ 音乐官方源（可开关关闭）：无精确 id 时优先——QQ 曲库最全、明文 LRC 与播放同源，
     //    按 歌名/歌手 搜索 + 时长锁定版本，比用网易云源给 QQ 配词更贴合（时间轴对齐 QQ 播放的版本）。
-    if (title && onlineEnabled && !nid && !hash) {
+    if (title && onlineEnabled && !neteaseNid && !hash) {
       try {
         const picked = await pickQQSong(title, artist, ev.durationMs);
         if (picked) {
@@ -486,6 +564,8 @@ function createLyricsService(onLines, cacheDir) {
     clearManual,
     // 在线歌词兜底开关
     setOnlineEnabled(v) { onlineEnabled = !!v; },
+    // 汽水歌词快照注入（main 里挂 registry.getSodaLyric）
+    setSodaLyricProvider(fn) { sodaLyricProvider = typeof fn === 'function' ? fn : null; },
     parseLrc,
   };
 }

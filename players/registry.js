@@ -16,6 +16,7 @@ const { createSmtcAdapter } = require('./smtc');
 const { createKugouCdpAdapter } = require('./kugou-cdp');
 const { createNeteaseDbAdapter } = require('./netease-db');
 const { createNeteaseCdpAdapter } = require('./netease-cdp');
+const { createSodaCdpAdapter } = require('./soda-cdp');
 const neteasePatch = require('./netease-patch');
 
 // SourceAppUserModelId / 进程名 关键词 → 播放器 id
@@ -61,6 +62,7 @@ function createPlayerManager(onUnified, opts) {
   let cdp = null;
   let nedb = null;       // 网易云进度适配器（读本地库补偿 SMTC 无时间轴）
   let ncdp = null;       // 网易云 CDP 适配器（优先于 nedb，seek 自动感知）
+  let scdp = null;       // 汽水 CDP 适配器（主进程 inspector 9229 + transport 全量播放态）
   let running = false;
   let preferred = 'auto';   // 'auto' 或具体 playerId：锁定只认该播放器，它没在放则输出无播放（不回退）
   let lastNedbKey = '';  // 网易云上次 歌名|歌手，用于切歌即时重扫锚定
@@ -71,10 +73,13 @@ function createPlayerManager(onUnified, opts) {
   let lastSmtcOkAt = 0;
   let lastNcdp = null;   // 最近一次网易云 cdp 事件
   let lastNcdpOkAt = 0;
+  let lastScdp = null;   // 最近一次汽水 cdp 事件
+  let lastScdpOkAt = 0;
 
   const CDP_FRESH_MS = 3000;   // cdp 数据新鲜度窗口
   const SMTC_FRESH_MS = 3000;
   const NCDP_FRESH_MS = 3000;
+  const SCDP_FRESH_MS = 3000;
 
   /* ---- 停滞检测（对齐 PlayerCap 的 time-stall 判据）----
    * 场景：播放器实际已暂停/卡住，但状态通道未上报（如 QQ 音乐 SMTC 偶发冻结）。
@@ -121,6 +126,7 @@ function createPlayerManager(onUnified, opts) {
   function cdpFresh() { return lastCdp && lastCdp.ok && (Date.now() - lastCdpOkAt) < CDP_FRESH_MS; }
   function smtcFresh() { return lastSmtc && lastSmtc.ok && (Date.now() - lastSmtcOkAt) < SMTC_FRESH_MS; }
   function ncdpFresh() { return lastNcdp && lastNcdp.ok && (Date.now() - lastNcdpOkAt) < NCDP_FRESH_MS; }
+  function scdpFresh() { return lastScdp && lastScdp.ok && (Date.now() - lastScdpOkAt) < SCDP_FRESH_MS; }
 
   // 网易云进度来源选择：CDP 直连 > nedb 锚点 > SMTC 原始（无时间轴）
   function getNeteaseProgress() {
@@ -137,17 +143,20 @@ function createPlayerManager(onUnified, opts) {
   }
 
   function recompute() {
-    // 决定当前播放器 id：优先 smtc 的 sourceId；smtc 无会话时用 cdp（酷狗）
+    // 决定当前播放器 id：优先 smtc 的 sourceId；smtc 无会话时用 cdp（酷狗/汽水）
     let playerId = 'unknown';
     if (smtcFresh()) playerId = mapSourceId(lastSmtc.sourceId);
     else if (cdpFresh()) playerId = 'kugou';
+    else if (scdpFresh()) playerId = 'qishui';
 
     // 选择来源：根据首选播放器锁定
     let chosen = null;
     if (preferred === 'auto') {
-      // 酷狗且 cdp 新鲜 → cdp；否则 smtc 新鲜 → smtc；再否则 cdp（酷狗在播但 smtc 无会话）
+      // 酷狗且 cdp 新鲜 → cdp；汽水且 scdp 新鲜 → scdp；否则 smtc 新鲜 → smtc；再否则 cdp
       if (playerId === 'kugou' && cdpFresh() && lastCdp.status !== 'stopped') {
         chosen = lastCdp;
+      } else if (playerId === 'qishui' && scdpFresh() && lastScdp.status !== 'stopped') {
+        chosen = lastScdp;
       } else if (smtcFresh()) {
         chosen = lastSmtc;
         // 若 smtc 识别为酷狗但 cdp 也新鲜且 smtc 无进度（酷狗不上报），仍用 cdp
@@ -155,15 +164,26 @@ function createPlayerManager(onUnified, opts) {
             !(lastSmtc.durationMs > 0) && lastCdp.status !== 'stopped') {
           chosen = lastCdp;
         }
+        // 汽水同理：smtc 无时间轴，scdp 新鲜时优先
+        if (mapSourceId(lastSmtc.sourceId) === 'qishui' && scdpFresh() &&
+            !(lastSmtc.durationMs > 0) && lastScdp.status !== 'stopped') {
+          chosen = lastScdp;
+        }
       } else if (cdpFresh() && lastCdp.status !== 'stopped') {
         chosen = lastCdp;
+      } else if (scdpFresh() && lastScdp.status !== 'stopped') {
+        chosen = lastScdp;
       }
     } else if (preferred === 'kugou') {
       // 锁定酷狗：优先 cdp（零漂移），否则酷狗的 smtc 会话
       if (cdpFresh() && lastCdp.status !== 'stopped') chosen = lastCdp;
       else if (smtcFresh() && mapSourceId(lastSmtc.sourceId) === 'kugou') chosen = lastSmtc;
+    } else if (preferred === 'qishui') {
+      // 锁定汽水：优先 scdp（全量数据），否则汽水的 smtc 会话
+      if (scdpFresh() && lastScdp.status !== 'stopped') chosen = lastScdp;
+      else if (smtcFresh() && mapSourceId(lastSmtc.sourceId) === 'qishui') chosen = lastSmtc;
     } else {
-      // 锁定其它播放器：只认匹配的 smtc 会话，忽略 cdp（cdp 仅酷狗）
+      // 锁定其它播放器：只认匹配的 smtc 会话，忽略 cdp（cdp 仅酷狗/汽水）
       if (smtcFresh() && mapSourceId(lastSmtc.sourceId) === preferred) chosen = lastSmtc;
     }
 
@@ -204,6 +224,11 @@ function createPlayerManager(onUnified, opts) {
     else { lastNcdp = ev; }
     recompute();
   }, { onPortClosed: (opts && opts.onNeteasePortClosed) || null });
+  scdp = createSodaCdpAdapter((ev) => {
+    if (ev.ok) { lastScdp = ev; lastScdpOkAt = Date.now(); }
+    else { lastScdp = ev; }
+    recompute();
+  }, { onPortClosed: (opts && opts.onSodaPortClosed) || null });
 
   return {
     start() {
@@ -213,6 +238,7 @@ function createPlayerManager(onUnified, opts) {
       cdp.start();
       try { nedb.start(); } catch (e) {}
       try { ncdp.start(); } catch (e) {}
+      try { scdp.start(); } catch (e) {}
     },
     stop() {
       running = false;
@@ -220,20 +246,33 @@ function createPlayerManager(onUnified, opts) {
       cdp.stop();
       try { nedb.stop(); } catch (e) {}
       try { ncdp.stop(); } catch (e) {}
+      try { scdp.stop(); } catch (e) {}
       lastSmtc = null; lastCdp = null; lastCdpOkAt = 0; lastSmtcOkAt = 0;
       lastNcdp = null; lastNcdpOkAt = 0;
+      lastScdp = null; lastScdpOkAt = 0;
     },
     // 供服务器/歌词服务主动查询当前快照
     snapshot() {
       if (preferred === 'auto') {
         if (cdpFresh() && lastCdp.status !== 'stopped') return Object.assign({}, lastCdp);
-        if (smtcFresh()) return applyNeteaseProgress(Object.assign({}, lastSmtc, { playerId: mapSourceId(lastSmtc.sourceId) }));
+        if (scdpFresh() && lastScdp.status !== 'stopped' && !smtcFresh()) return Object.assign({}, lastScdp);
+        if (smtcFresh()) {
+          const pid = mapSourceId(lastSmtc.sourceId);
+          if (pid === 'qishui' && scdpFresh() && lastScdp.status !== 'stopped') return Object.assign({}, lastScdp);
+          return applyNeteaseProgress(Object.assign({}, lastSmtc, { playerId: pid }));
+        }
         if (cdpFresh()) return Object.assign({}, lastCdp);
+        if (scdpFresh()) return Object.assign({}, lastScdp);
         return null;
       }
       if (preferred === 'kugou') {
         if (cdpFresh() && lastCdp.status !== 'stopped') return Object.assign({}, lastCdp);
         if (smtcFresh() && mapSourceId(lastSmtc.sourceId) === 'kugou') return Object.assign({}, lastSmtc, { playerId: 'kugou' });
+        return null;
+      }
+      if (preferred === 'qishui') {
+        if (scdpFresh() && lastScdp.status !== 'stopped') return Object.assign({}, lastScdp);
+        if (smtcFresh() && mapSourceId(lastSmtc.sourceId) === 'qishui') return Object.assign({}, lastSmtc, { playerId: 'qishui' });
         return null;
       }
       if (smtcFresh() && mapSourceId(lastSmtc.sourceId) === preferred) return applyNeteaseProgress(Object.assign({}, lastSmtc, { playerId: preferred }));
@@ -246,11 +285,12 @@ function createPlayerManager(onUnified, opts) {
       recompute();
     },
     getPreferred() { return preferred; },
-    // 当前可检测到的播放器 id 列表（所有已注册 SMTC 会话 + cdp 新鲜的酷狗），供 UI 活跃标记
+    // 当前可检测到的播放器 id 列表（所有已注册 SMTC 会话 + cdp 新鲜的酷狗/汽水），供 UI 活跃标记
     getActivePlayers() {
       const set = new Set();
       try { (smtc.getActiveSourceIds() || []).forEach((sid) => { const p = mapSourceId(sid); if (p !== 'unknown') set.add(p); }); } catch (e) {}
       if (cdpFresh()) set.add('kugou');
+      if (scdpFresh()) set.add('qishui');
       return Array.from(set);
     },
     // 网易云 CDP 状态查询（供 UI 显示当前接入状态）
@@ -259,6 +299,17 @@ function createPlayerManager(onUnified, opts) {
         connected: ncdpFresh(),
         hasData: !!(lastNcdp && lastNcdp.ok),
       };
+    },
+    // 汽水 CDP 状态查询（供 UI 显示当前接入状态）
+    getSodaCdpState() {
+      return {
+        connected: scdpFresh(),
+        hasData: !!(lastScdp && lastScdp.ok),
+      };
+    },
+    // 汽水歌词快照（供歌词服务按 nid 取原生歌词+翻译轨）
+    getSodaLyric() {
+      try { return scdp ? scdp.getLyric() : null; } catch (e) { return null; }
     },
     // 网易云 seek 后手动对齐：转发给 nedb 重设锚点，并立即用新锚点重算广播（无需等下一轮 500ms）
     realignNetease(positionMs) {
